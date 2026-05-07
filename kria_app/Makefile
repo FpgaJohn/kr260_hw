@@ -43,4 +43,4 @@ clean:
 	rm -rf $(BUILD)
 
 deploy: package
-	scp -r build/$(APP_NAME) ubuntu@kr260:~/
+	scp -r build/$(APP_NAME) ubuntu@kr260u:~/
