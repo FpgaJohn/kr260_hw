@@ -4,22 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A **Vivado 2024.1 hardware project** for the **Xilinx KR260 Robotics Starter Kit** (Zynq UltraScale+, part `xck26-sfvc784-2LV-c`, board `xilinx.com:kr260_som:part0:1.1`). The project produces a single deliverable — `design_1_wrapper.xsa` — which is intended to be consumed by a downstream PetaLinux / Vitis flow (not present in this repo).
+A **Vivado 2024.1 hardware project** for the **Xilinx KR260 Robotics Starter Kit** (Zynq UltraScale+, part `xck26-sfvc784-2LV-c`, board `xilinx.com:kr260_som:part0:1.1`), plus the packaging and deploy glue to load it on the running board as a **Kria runtime app** (no reflash). The hardware deliverable is `design_1_wrapper.xsa`; the runtime deliverable is the `kria_app/build/kr260_hw/` package consumed by `xmutil loadapp`.
 
-This is a **separate project from the `arty_*` and `fpganow` trees** in `/home/john/work/`. The workspace-level `/home/john/work/CLAUDE.md` predates this repo and does not list it; do **not** assume cross-references with those projects. Same toolchain version (2024.1), but the KR260 is `cortexa72` (UltraScale+, ARMv8), not the Zynq-7000 / `cortexa9` of the Arty boards.
+This is a separate project from the `arty_*` and `fpganow` trees in `/home/john/work/`. Same toolchain version (2024.1), but the KR260 is `cortexa72` (UltraScale+, ARMv8), not the Zynq-7000 / `cortexa9` of the Arty boards — sysroots and bitstream formats are not interchangeable.
 
 ## Repo layout
 
 ```
-kr260_hw.tcl              # project-recreation script — the source of truth
+kr260_hw.tcl              # Vivado project-recreation script — source of truth for the BD
 vivado/constraints/cons.xdc
-design_1_wrapper.xsa      # exported hardware handoff
-vivado/                   # generated project lives here after running the .tcl
+design_1_wrapper.xsa      # exported hardware handoff (consumed by kria_app/)
+kria_app/                 # packages design_1_wrapper.xsa as a Kria runtime app
+scripts/                  # helper shell scripts that run on the KR260
+Makefile                  # top-level: ships scripts/ to the board over ssh
+kria_app_eth/             # OUT OF SCOPE here — separate, larger design (its own XSA, FIFOs/DMAs/my_state)
 ```
 
-There are **no checked-in HDL sources** and no `vivado/kr260_hw/` project directory in git. The Tcl script generates everything from scratch; the block design lives inline inside `kr260_hw.tcl` (proc `cr_bd_design_1`, around line 225+).
+There are no checked-in HDL sources and no `vivado/kr260_hw/` project directory in git — `kr260_hw.tcl` regenerates everything. The block design lives inline in the script (proc `cr_bd_design_1`, around line 225+).
 
-## Recreating the project in Vivado
+`kria_app_eth/` is unrelated to the BD in `kr260_hw.tcl`; do **not** mix its address map, dtso, or `gpio.sh`-style scripts into work on `kr260_hw`.
+
+## Recreating the Vivado project
 
 ```bash
 # In the Vivado 2024.1 Tcl shell, from this directory:
@@ -36,7 +41,7 @@ Re-export the XSA with `write_hw_platform -fixed -include_bit -force design_1_wr
 
 ## Block design summary (`design_1`)
 
-A minimal "hello PS+PL" design — useful to know before editing `kr260_hw.tcl`:
+A minimal "hello PS+PL" design — useful before editing `kr260_hw.tcl`:
 
 - **`zynq_ultra_ps_e_0`** — Zynq UltraScale+ PS (v3.5). Exposes `M_AXI_HPM0_FPD` and `M_AXI_HPM1_FPD`. `pl_clk0` clocks the AXI fabric; `emio_ttc0_wave_o[2]` drives the fan.
 - **`ps8_0_axi_periph`** — `axi_interconnect` (2 SI, 2 MI). Both PS HPM masters fan into the two AXI GPIO blocks.
@@ -55,3 +60,52 @@ The Tcl is **machine-generated** by `write_project_tcl`. Hand-edits survive but 
 - **Add IP / nets** — prefer doing it in the Vivado GUI, then re-run `write_project_tcl -force kr260_hw.tcl` and commit the diff. Don't merge the regenerated layout-string section by hand.
 
 The constraint file path embedded in the script is `$origin_dir/vivado/constraints/cons.xdc` — keep `cons.xdc` at that location or the script's `checkRequiredFiles` proc will refuse to bootstrap.
+
+## Packaging as a Kria runtime app (`kria_app/`)
+
+Wraps `design_1_wrapper.xsa` so `dfx-mgr` / `xmutil` can program the PL at runtime — no SD-card rewrite. Works on stock Kria firmware.
+
+```bash
+cd kria_app
+make            # → build/kr260_hw/{kr260_hw.bit.bin, kr260_hw.dtbo, shell.json}
+make deploy     # package + scp build/kr260_hw to ubuntu@kr260u:~/
+make clean
+```
+
+What the Makefile does:
+1. `unzip -p ../design_1_wrapper.xsa design_1_wrapper.bit` → raw `.bit`
+2. `bootgen -arch zynqmp -process_bitstream bin` → `.bit.bin` (the format `fpga_manager` needs)
+3. `dtc -@` → `.dtbo` from `kr260_hw.dtso`
+
+Both `bootgen` and `dtc` come from the PetaLinux toolchain. Override the path via `PETALINUX_SETTINGS=…` (default `/tools/Xilinx/PetaLinux/2024.1/settings.sh`).
+
+Loading on the KR260:
+```bash
+sudo mv ~/kr260_hw /lib/firmware/xilinx/        # where dfx-mgr looks
+sudo xmutil listapps                            # confirm "kr260_hw" appears (Inactive)
+sudo xmutil unloadapp                           # drop whatever's active (factory app)
+sudo xmutil loadapp kr260_hw
+cat /sys/class/fpga_manager/fpga0/state         # → "operating"
+gpiodetect                                      # two new gpiochips appear
+```
+
+### Known address conflict
+
+The overlay places GPIOs at `0xA000_0000` and `0xA001_0000`, which collide with factory base-DT stub nodes (`gpio@a0000000`, `i2c@a0010000` under `/amba_pl@0/`). If `xmutil loadapp` rolls back with `sysfs: cannot create duplicate filename …a0000000.gpio` in `dmesg`, see `kria_app/INSTALL.md` "Address conflict" — three escalating fixes:
+
+1. Rename the unit-name in the dtso (cheap, sometimes enough — `compatible` still drives binding).
+2. Switch the conflicting node to `compatible = "generic-uio"` and drive registers from userspace.
+3. Move the addresses in the Vivado BD above `0xA004_0000` (cleanest — factory stubs cover `A000`–`A003`), regenerate the wrapper, re-export the XSA, re-`make`.
+
+## Top-level `Makefile` and `scripts/`
+
+The repo-root `Makefile` is for **interacting with the running board**, not for building. It assumes ssh to `ubuntu@kr260u` is set up.
+
+- `make` (default `info`) — scp's `list_uio.sh` to `~/` on the board and runs it. Prints SoC temperatures and the `/sys/class/uio/uio*` table (UIO index → name → AXI address).
+- `make deploy` — scp's all of `scripts/` to `~/` on the board.
+
+`scripts/` contents:
+- `list_uio.sh` — temps + UIO listing (read-only inspection).
+- `mod_probe.sh` — rebinds the generic UIO driver: `modprobe -r uio_pdrv_genirq; modprobe uio_pdrv_genirq of_id=generic-uio`. Run after a fresh `loadapp` if your nodes set `compatible = "generic-uio"` but `/dev/uioN` doesn't appear.
+- `load_app.sh` — wrapper around `xmutil listapps`.
+- `gpio.sh` — **for `kria_app_eth`, not `kria_app`**. Drives the `my_state` accumulator at `0xA0040000` / `0xA00C0000`, which exist only in the larger ethernet bitstream. It will not do anything useful against the `kr260_hw` design (no such peripherals).

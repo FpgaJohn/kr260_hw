@@ -15,8 +15,5 @@ info:
 #
 #
 deploy:
-	@scp list_uio.sh $(KR260_USER)@kr260u:~/
-	@scp mod_probe.sh $(KR260_USER)@kr260u:~/
-	@scp load_app.sh $(KR260_USER)@kr260u:~/
-	@scp gpio.sh $(KR260_USER)@kr260u:~/
+	@scp ./scripts/* $(KR260_USER)@kr260u:~/
 
