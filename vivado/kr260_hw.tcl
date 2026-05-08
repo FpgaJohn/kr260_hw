@@ -27,8 +27,8 @@
 #
 # 3. The following remote source files that were added to the original project:-
 #
-#    "./vivado/ip/my_state.v"
-#    "./vivado/constraints/cons.xdc"
+#    "./ip/my_state.v"
+#    "./constraints/cons.xdc"
 #
 #*****************************************************************************************
 
@@ -36,8 +36,8 @@
 proc checkRequiredFiles { origin_dir} {
   set status true
   set files [list \
- "[file normalize "$origin_dir/vivado/ip/my_state.v"]"\
- "[file normalize "$origin_dir/vivado/constraints/cons.xdc"]"\
+ "[file normalize "$origin_dir/ip/my_state.v"]"\
+ "[file normalize "$origin_dir/constraints/cons.xdc"]"\
   ]
   foreach ifile $files {
     if { ![file isfile $ifile] } {
@@ -113,7 +113,7 @@ if { $::argc > 0 } {
 }
 
 # Set the directory path for the original project from where this script was exported
-set orig_proj_dir "[file normalize "$origin_dir/vivado/kr260_hw"]"
+set orig_proj_dir "[file normalize "$origin_dir/kr260_hw"]"
 
 # Check for paths and files needed for project creation
 set validate_required 0
@@ -169,7 +169,7 @@ if {[string equal [get_filesets -quiet sources_1] ""]} {
 # Set 'sources_1' fileset object
 set obj [get_filesets sources_1]
 set files [list \
- [file normalize "${origin_dir}/vivado/ip/my_state.v"] \
+ [file normalize "${origin_dir}/ip/my_state.v"] \
 ]
 add_files -norecurse -fileset $obj $files
 
@@ -193,9 +193,9 @@ if {[string equal [get_filesets -quiet constrs_1] ""]} {
 set obj [get_filesets constrs_1]
 
 # Add/Import constrs file and set constrs file properties
-set file "[file normalize "$origin_dir/vivado/constraints/cons.xdc"]"
+set file "[file normalize "$origin_dir/constraints/cons.xdc"]"
 set file_added [add_files -norecurse -fileset $obj [list $file]]
-set file "$origin_dir/vivado/constraints/cons.xdc"
+set file "$origin_dir/constraints/cons.xdc"
 set file [file normalize $file]
 set file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
 set_property -name "file_type" -value "XDC" -objects $file_obj
@@ -227,7 +227,7 @@ set obj [get_filesets utils_1]
 
 # Adding sources referenced in BDs, if not already added
 if { [get_files [list my_state.v]] == "" } {
-  import_files -quiet -fileset sources_1 [file normalize "$origin_dir/vivado/ip/my_state.v"]
+  import_files -quiet -fileset sources_1 [file normalize "$origin_dir/ip/my_state.v"]
 }
 
 
@@ -939,7 +939,7 @@ set_property SYNTH_CHECKPOINT_MODE "Hierarchical" [get_files design_1.bd ]
 
 #call make_wrapper to create wrapper files
 if { [get_property IS_LOCKED [ get_files -norecurse [list design_1.bd]] ] == 1  } {
-  import_files -fileset sources_1 [file normalize "${origin_dir}/vivado/kr260_hw/kr260_hw.gen/sources_1/bd/design_1/hdl/design_1_wrapper.v" ]
+  import_files -fileset sources_1 [file normalize "${origin_dir}/kr260_hw/kr260_hw.gen/sources_1/bd/design_1/hdl/design_1_wrapper.v" ]
 } else {
   set wrapper_path [make_wrapper -fileset sources_1 -files [ get_files -norecurse [list design_1.bd]] -top]
   add_files -norecurse -fileset sources_1 $wrapper_path

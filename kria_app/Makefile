@@ -1,5 +1,5 @@
 APP_NAME := kr260_hw
-XSA      := ../kr260_hw.xsa
+XSA      := ../vivado/kr260_hw.xsa
 XSA_BIT  := kr260_hw.bit
 BUILD    := build
 BIT      := $(BUILD)/$(APP_NAME).bit

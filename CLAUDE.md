@@ -11,23 +11,23 @@ This is a separate project from the `arty_*` and `fpganow` trees in `/home/john/
 ## Repo layout
 
 ```
-kr260_hw.tcl              # Vivado project-recreation script — source of truth for the BD
+vivado/kr260_hw.tcl       # Vivado project-recreation script — source of truth for the BD
+vivado/kr260_hw.xsa       # exported hardware handoff (consumed by kria_app/)
 vivado/constraints/cons.xdc
-design_1_wrapper.xsa      # exported hardware handoff (consumed by kria_app/)
-kria_app/                 # packages design_1_wrapper.xsa as a Kria runtime app
+kria_app/                 # packages vivado/kr260_hw.xsa as a Kria runtime app
 scripts/                  # helper shell scripts that run on the KR260
 Makefile                  # top-level: ships scripts/ to the board over ssh
 kria_app_eth/             # OUT OF SCOPE here — separate, larger design (its own XSA, FIFOs/DMAs/my_state)
 ```
 
-There are no checked-in HDL sources and no `vivado/kr260_hw/` project directory in git — `kr260_hw.tcl` regenerates everything. The block design lives inline in the script (proc `cr_bd_design_1`, around line 225+).
+There are no checked-in HDL sources and no `vivado/kr260_hw/` project directory in git — `vivado/kr260_hw.tcl` regenerates everything. The block design lives inline in the script (proc `cr_bd_design_1`, around line 225+).
 
-`kria_app_eth/` is unrelated to the BD in `kr260_hw.tcl`; do **not** mix its address map, dtso, or `gpio.sh`-style scripts into work on `kr260_hw`.
+`kria_app_eth/` is unrelated to the BD in `vivado/kr260_hw.tcl`; do **not** mix its address map, dtso, or `gpio.sh`-style scripts into work on `kr260_hw`.
 
 ## Recreating the Vivado project
 
 ```bash
-# In the Vivado 2024.1 Tcl shell, from this directory:
+# In the Vivado 2024.1 Tcl shell, from the vivado/ directory:
 source kr260_hw.tcl
 ```
 
@@ -37,7 +37,7 @@ The script will:
 3. Generate `design_1_wrapper.v`, add `vivado/constraints/cons.xdc`
 4. Define `synth_1` and `impl_1` runs (Vivado defaults). It does **not** auto-launch them.
 
-Re-export the XSA with `write_hw_platform -fixed -include_bit -force design_1_wrapper.xsa` after `impl_1` + `write_bitstream`.
+Re-export the XSA with `write_hw_platform -fixed -include_bit -force kr260_hw.xsa` after `impl_1` + `write_bitstream` (output lands in `vivado/`).
 
 ## Block design summary (`design_1`)
 
@@ -53,7 +53,7 @@ A PS + my_state accumulator design — useful before editing `kr260_hw.tcl`:
 
 A known-good runtime smoke test for this design lives at `scripts/gpio.sh` — uses `devmem` against the two GPIO addresses to drive ADD/RESET pulses and read back the 64-bit accumulator.
 
-If you change the BD, regenerate the XSA (see "Building the XSA" below) and re-export the script with `write_project_tcl -force kr260_hw.tcl` so the repo stays self-bootstrapping.
+If you change the BD, regenerate the XSA (see "Building the XSA" below) and re-export the script with `write_project_tcl -force ../kr260_hw.tcl` (run from the project dir) so the repo stays self-bootstrapping.
 
 ### Gotcha: `axi_gpio_control` must be configured dual-channel
 
@@ -63,28 +63,28 @@ If you change the BD, regenerate the XSA (see "Building the XSA" below) and re-e
 
 ```bash
 cd vivado
-make            # → ../kr260_hw.xsa, project at ./kr260_hw/
+make            # → ./kr260_hw.xsa, project at ./kr260_hw/
 make clean
 ```
 
-The Makefile sources `/tools/Xilinx/Vivado/2024.1/settings64.sh` (override with `VIVADO_SETTINGS=…`), runs `vivado -mode batch -source build.tcl`, and writes the XSA via `write_hw_platform -fixed -include_bit -force ../kr260_hw.xsa`. `build.tcl` stubs `APPDATA` (the script tries to use it, harmless on Linux) and forces `general.maxThreads 1` (Vivado's `parallel_synth_helper` deadlocks at 0% CPU on memory-constrained boxes; serialising costs a few minutes but is reliable).
+The Makefile sources `/tools/Xilinx/Vivado/2024.1/settings64.sh` (override with `VIVADO_SETTINGS=…`), runs `vivado -mode batch -source build.tcl`, and writes the XSA via `write_hw_platform -fixed -include_bit -force kr260_hw.xsa`. `build.tcl` stubs `APPDATA` (the script tries to use it, harmless on Linux) and forces `general.maxThreads 1` (Vivado's `parallel_synth_helper` deadlocks at 0% CPU on memory-constrained boxes; serialising costs a few minutes but is reliable).
 
 `JOBS` defaults to 1 — running this design with `JOBS=4` triggers the OOM killer on a 16 GiB host with no swap. Bump only after watching `free -h` during a build.
 
-`kria_app/Makefile` extracts the bitstream from `../design_1_wrapper.xsa`, *not* `../kr260_hw.xsa`. If you regenerate the XSA under the new name, either rename it for the kria_app flow or update `kria_app/Makefile`'s `XSA` variable.
+`kria_app/Makefile` extracts the bitstream from `../vivado/kr260_hw.xsa`.
 
-## Editing `kr260_hw.tcl` directly
+## Editing `vivado/kr260_hw.tcl` directly
 
 The Tcl is **machine-generated** by `write_project_tcl`. Hand-edits survive but are easy to clobber on the next export. Two practical patterns:
 
-- **Tweak a parameter** (e.g., GPIO width, slice range) — fine to edit in place, but re-run `source kr260_hw.tcl` in a fresh project to confirm it still bootstraps cleanly.
-- **Add IP / nets** — prefer doing it in the Vivado GUI, then re-run `write_project_tcl -force kr260_hw.tcl` and commit the diff. Don't merge the regenerated layout-string section by hand.
+- **Tweak a parameter** (e.g., GPIO width, slice range) — fine to edit in place, but re-run `source kr260_hw.tcl` (from `vivado/`) in a fresh project to confirm it still bootstraps cleanly.
+- **Add IP / nets** — prefer doing it in the Vivado GUI, then re-run `write_project_tcl -force ../kr260_hw.tcl` (from the project dir) and commit the diff. Don't merge the regenerated layout-string section by hand.
 
-The constraint file path embedded in the script is `$origin_dir/vivado/constraints/cons.xdc` — keep `cons.xdc` at that location or the script's `checkRequiredFiles` proc will refuse to bootstrap.
+The constraint file path embedded in the script is `$origin_dir/constraints/cons.xdc` — keep `cons.xdc` at `vivado/constraints/cons.xdc` or the script's `checkRequiredFiles` proc will refuse to bootstrap.
 
 ## Packaging as a Kria runtime app (`kria_app/`)
 
-Wraps `design_1_wrapper.xsa` so `dfx-mgr` / `xmutil` can program the PL at runtime — no SD-card rewrite. Works on stock Kria firmware.
+Wraps `vivado/kr260_hw.xsa` so `dfx-mgr` / `xmutil` can program the PL at runtime — no SD-card rewrite. Works on stock Kria firmware.
 
 ```bash
 cd kria_app
@@ -94,7 +94,7 @@ make clean
 ```
 
 What the Makefile does:
-1. `unzip -p ../design_1_wrapper.xsa design_1_wrapper.bit` → raw `.bit`
+1. `unzip -p ../vivado/kr260_hw.xsa kr260_hw.bit` → raw `.bit`
 2. `bootgen -arch zynqmp -process_bitstream bin` → `.bit.bin` (the format `fpga_manager` needs)
 3. `dtc -@` → `.dtbo` from `kr260_hw.dtso`
 

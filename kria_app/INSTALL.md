@@ -16,7 +16,7 @@ Produces `build/kr260_hw/` containing:
 - `kr260_hw.dtbo`    — device-tree overlay
 - `shell.json`       — Kria manifest
 
-The Makefile pulls `kr260_hw.bit` out of `../kr260_hw.xsa`,
+The Makefile pulls `kr260_hw.bit` out of `../vivado/kr260_hw.xsa`,
 runs `bootgen -process_bitstream bin` to convert to the raw format
 `fpga_manager` needs, and `dtc` to compile the overlay.
 

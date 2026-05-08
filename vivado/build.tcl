@@ -6,13 +6,13 @@
 # Assumes CWD is ./vivado/ relative to the repo root, so the project lands
 # in ./vivado/kr260_hw/ and source paths still resolve via origin_dir.
 
-set origin_dir_loc ".."
+set origin_dir_loc "."
 
 # kr260_hw.tcl was exported on a host that had APPDATA set; on Linux it is
 # unset and trips the board_part_repo_paths line. Stub it to a harmless path.
 if { ![info exists ::env(APPDATA)] } { set ::env(APPDATA) [file normalize ~/.Xilinx] }
 
-source ../kr260_hw.tcl
+source kr260_hw.tcl
 
 # Force single-threaded synthesis. On memory-constrained boxes the
 # parallel_synth_helper can deadlock at 0% CPU after "Initializing timing
@@ -35,7 +35,7 @@ if { [get_property PROGRESS [get_runs impl_1]] ne "100%" } {
 }
 
 open_run impl_1
-write_hw_platform -fixed -include_bit -force ../kr260_hw.xsa
+write_hw_platform -fixed -include_bit -force kr260_hw.xsa
 
 puts "----"
-puts "Wrote XSA: [file normalize ../kr260_hw.xsa]"
+puts "Wrote XSA: [file normalize kr260_hw.xsa]"
