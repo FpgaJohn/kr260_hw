@@ -803,7 +803,11 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
   # Create instance: axi_gpio_control, and set properties
   set axi_gpio_control [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_control ]
   set_property -dict [list \
+    CONFIG.C_ALL_OUTPUTS {1} \
+    CONFIG.C_ALL_OUTPUTS_2 {1} \
+    CONFIG.C_GPIO_WIDTH {2} \
     CONFIG.C_GPIO2_WIDTH {32} \
+    CONFIG.C_IS_DUAL {1} \
     CONFIG.GPIO2_BOARD_INTERFACE {Custom} \
     CONFIG.GPIO_BOARD_INTERFACE {Custom} \
     CONFIG.USE_BOARD_FLOW {true} \

@@ -23,45 +23,28 @@
 		compatible = "xlnx,fclk";
 	};
 
-	/* axi_gpio_0 @ 0xA000_0000 (dual-channel, output only)
-	 *   ch1: som240_1_connector_User_led — 2-bit out
-	 *   ch2: som240_1_connector_gem2_led — 3-bit out
+	/* axi_gpio_control — drives the my_state accumulator inputs.
+	 *   +0x00  ch1 DATA  — 2-bit opcode (0=noop, 1=add edge, 2=reset edge)
+	 *   +0x08  ch2 DATA  — 32-bit addend (value)
 	 *
-	 * NOTE: 0xA000_0000 collides with the factory base DT's gpio@a0000000
-	 * stub (/amba_pl@0/gpio@a0000000). If `xmutil loadapp` rolls back with
-	 * sysfs_warn_dup, see kria_app/INSTALL.md "Address conflict" section. */
-	gpio@a0000000 {
-		#gpio-cells = <2>;
-		clock-names = "s_axi_aclk";
+	 * Unit-name is "axi_gpio_control" rather than "gpio" so the platform
+	 * device name doesn't collide with the factory base DT's
+	 * gpio@a0000000 stub — see INSTALL.md "Address conflict". */
+	axi_gpio_control@a0000000 {
 		clocks = <&zynqmp_clk 0x47>;
-		compatible = "xlnx,axi-gpio-2.0", "xlnx,xps-gpio-1.00.a";
-		gpio-controller;
+		compatible = "generic-uio";
 		reg = <0x0 0xa0000000 0x0 0x10000>;
-		xlnx,all-inputs = <0x0>;
-		xlnx,all-inputs-2 = <0x0>;
-		xlnx,all-outputs = <0x1>;
-		xlnx,all-outputs-2 = <0x1>;
-		xlnx,gpio-width = <0x2>;
-		xlnx,gpio2-width = <0x3>;
-		xlnx,is-dual = <0x1>;
 	};
 
-	/* axi_gpio_1 @ 0xA001_0000 (single-channel, output only)
-	 *   ch1: som240_2_connector_gem3_led — 3-bit out
+	/* axi_gpio_value — reads back the 64-bit accumulator.
+	 *   +0x00  ch1 DATA  — accumulator[31:0]
+	 *   +0x08  ch2 DATA  — accumulator[63:32]
 	 *
-	 * NOTE: 0xA001_0000 collides with the factory base DT's i2c@a0010000
-	 * stub. The unit-name differs ("gpio" vs "i2c") so platform_device
-	 * names should not collide, but if loadapp rolls back, see INSTALL.md. */
-	gpio@a0010000 {
-		#gpio-cells = <2>;
-		clock-names = "s_axi_aclk";
+	 * Factory base DT exposes i2c@a0010000 at this address; using a
+	 * different unit-name avoids the sysfs duplicate-name path. */
+	axi_gpio_value@a0010000 {
 		clocks = <&zynqmp_clk 0x47>;
-		compatible = "xlnx,axi-gpio-2.0", "xlnx,xps-gpio-1.00.a";
-		gpio-controller;
+		compatible = "generic-uio";
 		reg = <0x0 0xa0010000 0x0 0x10000>;
-		xlnx,all-inputs = <0x0>;
-		xlnx,all-outputs = <0x1>;
-		xlnx,gpio-width = <0x3>;
-		xlnx,is-dual = <0x0>;
 	};
 };

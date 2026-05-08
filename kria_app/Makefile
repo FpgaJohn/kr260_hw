@@ -1,6 +1,6 @@
 APP_NAME := kr260_hw
-XSA      := ../design_1_wrapper.xsa
-XSA_BIT  := design_1_wrapper.bit
+XSA      := ../kr260_hw.xsa
+XSA_BIT  := kr260_hw.bit
 BUILD    := build
 BIT      := $(BUILD)/$(APP_NAME).bit
 BIT_BIN  := $(BUILD)/$(APP_NAME).bit.bin

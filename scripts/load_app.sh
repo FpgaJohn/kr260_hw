@@ -1,7 +1,7 @@
 #!/bin/bash
 
-sudo xmutil listapps
+echo "Unloading any existing app..."
+sudo xmutil unloadapp
 
-#sudo xmutil unloadapp k26-starter-kits
-#sudo xmutil loadapp kr260_petalinux
-
+echo "Loading app kr260_hw"
+sudo xmutil loadapp kr260_hw

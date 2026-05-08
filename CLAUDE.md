@@ -41,16 +41,37 @@ Re-export the XSA with `write_hw_platform -fixed -include_bit -force design_1_wr
 
 ## Block design summary (`design_1`)
 
-A minimal "hello PS+PL" design — useful before editing `kr260_hw.tcl`:
+A PS + my_state accumulator design — useful before editing `kr260_hw.tcl`:
 
 - **`zynq_ultra_ps_e_0`** — Zynq UltraScale+ PS (v3.5). Exposes `M_AXI_HPM0_FPD` and `M_AXI_HPM1_FPD`. `pl_clk0` clocks the AXI fabric; `emio_ttc0_wave_o[2]` drives the fan.
 - **`ps8_0_axi_periph`** — `axi_interconnect` (2 SI, 2 MI). Both PS HPM masters fan into the two AXI GPIO blocks.
-- **`axi_gpio_0`** @ `0xA000_0000` — drives `som240_1_connector_User_led` (GPIO) and `som240_1_connector_gem2_led` (GPIO2).
-- **`axi_gpio_1`** @ `0xA001_0000` — drives `som240_2_connector_gem3_led`.
+- **`axi_gpio_control`** @ `0xA000_0000` — dual-channel, both output. ch1 (2-bit, `gpio_io_o`) drives `my_state_0/control`; ch2 (32-bit, `gpio2_io_o`) drives `my_state_0/value` (the addend).
+- **`axi_gpio_value`** @ `0xA001_0000` — dual-channel, both input. ch1 (32-bit, `gpio_io_i`) reads `my_state_0/sum` (`accumulator[31:0]`); ch2 reads `my_state_0/carry` (`accumulator[63:32]`).
+- **`my_state_0`** — module-reference of `vivado/ip/my_state.v`. 64-bit accumulator: `control` opcode 1 (rising edge from 0) adds `value` once; opcode 2 resets to zero. Outputs split into `sum`/`carry`.
 - **`xlslice_0`** — picks bit `[2]` of `emio_ttc0_wave_o` → `fan_en_b` (pin A12, see `cons.xdc`).
 - **`rst_ps8_0_99M`** — `proc_sys_reset` driven by `pl_resetn0`.
 
-If you change the BD, regenerate the XSA and re-export the script with `write_project_tcl -force kr260_hw.tcl` so the repo stays self-bootstrapping.
+A known-good runtime smoke test for this design lives at `scripts/gpio.sh` — uses `devmem` against the two GPIO addresses to drive ADD/RESET pulses and read back the 64-bit accumulator.
+
+If you change the BD, regenerate the XSA (see "Building the XSA" below) and re-export the script with `write_project_tcl -force kr260_hw.tcl` so the repo stays self-bootstrapping.
+
+### Gotcha: `axi_gpio_control` must be configured dual-channel
+
+`axi_gpio` defaults to single-channel. If `CONFIG.C_IS_DUAL {1}` is missing on `axi_gpio_control`, the `gpio2_io_o` pin doesn't exist, and `connect_bd_net … gpio2_io_o … my_state_0/value` *silently no-ops* — the `value` port floats, `accumulator[0]_i_*` LUT trims, impl fails with a "missing connection on input pin I0" error. The Tcl now sets `C_IS_DUAL`, `C_ALL_OUTPUTS`, `C_ALL_OUTPUTS_2`, and explicit widths to lock this in. Don't drop them on a re-export.
+
+## Building the XSA
+
+```bash
+cd vivado
+make            # → ../kr260_hw.xsa, project at ./kr260_hw/
+make clean
+```
+
+The Makefile sources `/tools/Xilinx/Vivado/2024.1/settings64.sh` (override with `VIVADO_SETTINGS=…`), runs `vivado -mode batch -source build.tcl`, and writes the XSA via `write_hw_platform -fixed -include_bit -force ../kr260_hw.xsa`. `build.tcl` stubs `APPDATA` (the script tries to use it, harmless on Linux) and forces `general.maxThreads 1` (Vivado's `parallel_synth_helper` deadlocks at 0% CPU on memory-constrained boxes; serialising costs a few minutes but is reliable).
+
+`JOBS` defaults to 1 — running this design with `JOBS=4` triggers the OOM killer on a 16 GiB host with no swap. Bump only after watching `free -h` during a build.
+
+`kria_app/Makefile` extracts the bitstream from `../design_1_wrapper.xsa`, *not* `../kr260_hw.xsa`. If you regenerate the XSA under the new name, either rename it for the kria_app flow or update `kria_app/Makefile`'s `XSA` variable.
 
 ## Editing `kr260_hw.tcl` directly
 

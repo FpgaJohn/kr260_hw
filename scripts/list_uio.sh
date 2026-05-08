@@ -17,12 +17,3 @@ echo "---- List UIO ----"
 for i in /sys/class/uio/uio*; do
   printf "%s\t%-12s @ %s\n" "$(basename $i)" "$(cat $i/name)" "$(cat $i/maps/map0/addr)"
 done
-
-echo "---- Rebind UIO ----"
-echo "sudo modprobe -r uio_pdrv_genirq"
-echo "sudo modprobe uio_pdrv_genirq of_id=generic-uio"
-
-echo "---- Test GPIO 0 (LED) ----"
-echo "devmem 0xa0000000 32"
-
-
