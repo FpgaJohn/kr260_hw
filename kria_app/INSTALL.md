@@ -76,11 +76,10 @@ sudo devmem 0xa0010000 32              # → 0x00000005   (sum = accumulator[31:
 sudo devmem 0xa0010008 32              # → 0x00000000   (carry = accumulator[63:32])
 ```
 
-Note that `scripts/gpio.sh` in the repo root targets a different design
-(`kr260_petalinux`, addresses `0xA004_0000` / `0xA00C_0000`) — its base
-addresses are wrong for `kr260_hw`. Use the inline `devmem` commands above
-or copy `gpio.sh` and rewrite the four address constants to `0xA000_0000`
-(control) / `0xA001_0000` (value).
+For an end-to-end smoke test that wraps the same `devmem` sequence into a
+single command, use `scripts/gpio.sh` from the repo root:
+`sudo ./gpio.sh [ADDEND]` (default 5) — it resets, sets the addend, pulses
+ADD twice, and prints the 64-bit accumulator after each step.
 
 ## 5. Unload when done
 

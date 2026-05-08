@@ -129,4 +129,4 @@ The repo-root `Makefile` is for **interacting with the running board**, not for 
 - `list_uio.sh` — temps + UIO listing (read-only inspection).
 - `mod_probe.sh` — rebinds the generic UIO driver: `modprobe -r uio_pdrv_genirq; modprobe uio_pdrv_genirq of_id=generic-uio`. Run after a fresh `loadapp` if your nodes set `compatible = "generic-uio"` but `/dev/uioN` doesn't appear.
 - `load_app.sh` — wrapper around `xmutil listapps`.
-- `gpio.sh` — **for `kria_app_eth`, not `kria_app`**. Drives the `my_state` accumulator at `0xA0040000` / `0xA00C0000`, which exist only in the larger ethernet bitstream. It will not do anything useful against the `kr260_hw` design (no such peripherals).
+- `gpio.sh` — drives the `my_state` accumulator from the PS via `devmem`. Addresses are `0xA000_0000` (control) and `0xA001_0000` (value), matching the `kr260_hw` BD. Run `sudo ./gpio.sh [ADDEND]` after `xmutil loadapp kr260_hw`. **Not** valid against the `kria_app_eth` (`kr260_petalinux`) bitstream — that one's bases are `0xA004_0000` / `0xA00C_0000`; see git history if you need the older variant.

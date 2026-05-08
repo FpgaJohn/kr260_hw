@@ -800,18 +800,27 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
   ] $zynq_ultra_ps_e_0
 
 
-  # Create instance: axi_gpio_control, and set properties
+  # Create instance: axi_gpio_control (single-channel) — drives my_state.control (2-bit opcode).
+  # NOTE: a dual-channel axi_gpio with both channels as outputs trips an IP synth bug
+  # (Dual.ALLOUT1_ND_G2.READ_REG2_GEN[*].GPIO2_DBus_i_reg removed) where ch2 writes
+  # silently fail to latch. The 32-bit "value" addend therefore lives in a separate
+  # single-channel IP `axi_gpio_addend` below; do not re-merge them.
   set axi_gpio_control [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_control ]
   set_property -dict [list \
     CONFIG.C_ALL_OUTPUTS {1} \
-    CONFIG.C_ALL_OUTPUTS_2 {1} \
     CONFIG.C_GPIO_WIDTH {2} \
-    CONFIG.C_GPIO2_WIDTH {32} \
-    CONFIG.C_IS_DUAL {1} \
-    CONFIG.GPIO2_BOARD_INTERFACE {Custom} \
-    CONFIG.GPIO_BOARD_INTERFACE {Custom} \
-    CONFIG.USE_BOARD_FLOW {true} \
+    CONFIG.C_IS_DUAL {0} \
   ] $axi_gpio_control
+
+
+  # Create instance: axi_gpio_addend (single-channel) — drives my_state.value (32-bit).
+  # Split out from axi_gpio_control to dodge the dual-channel write-latch synth bug.
+  set axi_gpio_addend [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_addend ]
+  set_property -dict [list \
+    CONFIG.C_ALL_OUTPUTS {1} \
+    CONFIG.C_GPIO_WIDTH {32} \
+    CONFIG.C_IS_DUAL {0} \
+  ] $axi_gpio_addend
 
 
   # Create instance: axi_gpio_value, and set properties
@@ -827,9 +836,10 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
 
 
   # Create instance: ps8_0_axi_periph, and set properties
+  # NUM_MI is 3: M00→axi_gpio_control, M01→axi_gpio_value, M02→axi_gpio_addend.
   set ps8_0_axi_periph [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 ps8_0_axi_periph ]
   set_property -dict [list \
-    CONFIG.NUM_MI {2} \
+    CONFIG.NUM_MI {3} \
     CONFIG.NUM_SI {2} \
   ] $ps8_0_axi_periph
 
@@ -860,23 +870,25 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
   # Create interface connections
   connect_bd_intf_net -intf_net ps8_0_axi_periph_M00_AXI [get_bd_intf_pins ps8_0_axi_periph/M00_AXI] [get_bd_intf_pins axi_gpio_control/S_AXI]
   connect_bd_intf_net -intf_net ps8_0_axi_periph_M01_AXI [get_bd_intf_pins ps8_0_axi_periph/M01_AXI] [get_bd_intf_pins axi_gpio_value/S_AXI]
+  connect_bd_intf_net -intf_net ps8_0_axi_periph_M02_AXI [get_bd_intf_pins ps8_0_axi_periph/M02_AXI] [get_bd_intf_pins axi_gpio_addend/S_AXI]
   connect_bd_intf_net -intf_net zynq_ultra_ps_e_0_M_AXI_HPM0_FPD [get_bd_intf_pins zynq_ultra_ps_e_0/M_AXI_HPM0_FPD] [get_bd_intf_pins ps8_0_axi_periph/S00_AXI]
   connect_bd_intf_net -intf_net zynq_ultra_ps_e_0_M_AXI_HPM1_FPD [get_bd_intf_pins zynq_ultra_ps_e_0/M_AXI_HPM1_FPD] [get_bd_intf_pins ps8_0_axi_periph/S01_AXI]
 
   # Create port connections
-  connect_bd_net -net axi_gpio_control_gpio2_io_o [get_bd_pins axi_gpio_control/gpio2_io_o] [get_bd_pins my_state_0/value]
+  connect_bd_net -net axi_gpio_addend_gpio_io_o [get_bd_pins axi_gpio_addend/gpio_io_o] [get_bd_pins my_state_0/value]
   connect_bd_net -net axi_gpio_control_gpio_io_o [get_bd_pins axi_gpio_control/gpio_io_o] [get_bd_pins my_state_0/control]
   connect_bd_net -net my_state_0_carry [get_bd_pins my_state_0/carry] [get_bd_pins axi_gpio_value/gpio2_io_i]
   connect_bd_net -net my_state_0_sum [get_bd_pins my_state_0/sum] [get_bd_pins axi_gpio_value/gpio_io_i]
-  connect_bd_net -net rst_ps8_0_99M_peripheral_aresetn [get_bd_pins rst_ps8_0_99M/peripheral_aresetn] [get_bd_pins ps8_0_axi_periph/S00_ARESETN] [get_bd_pins axi_gpio_control/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M00_ARESETN] [get_bd_pins ps8_0_axi_periph/ARESETN] [get_bd_pins axi_gpio_value/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M01_ARESETN] [get_bd_pins ps8_0_axi_periph/S01_ARESETN] [get_bd_pins my_state_0/resetn]
+  connect_bd_net -net rst_ps8_0_99M_peripheral_aresetn [get_bd_pins rst_ps8_0_99M/peripheral_aresetn] [get_bd_pins ps8_0_axi_periph/S00_ARESETN] [get_bd_pins axi_gpio_control/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M00_ARESETN] [get_bd_pins ps8_0_axi_periph/ARESETN] [get_bd_pins axi_gpio_value/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M01_ARESETN] [get_bd_pins ps8_0_axi_periph/S01_ARESETN] [get_bd_pins axi_gpio_addend/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M02_ARESETN] [get_bd_pins my_state_0/resetn]
   connect_bd_net -net xlslice_0_Dout [get_bd_pins xlslice_0/Dout] [get_bd_ports fan_en_b]
   connect_bd_net -net zynq_ultra_ps_e_0_emio_ttc0_wave_o [get_bd_pins zynq_ultra_ps_e_0/emio_ttc0_wave_o] [get_bd_pins xlslice_0/Din]
-  connect_bd_net -net zynq_ultra_ps_e_0_pl_clk0 [get_bd_pins zynq_ultra_ps_e_0/pl_clk0] [get_bd_pins zynq_ultra_ps_e_0/maxihpm0_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S00_ACLK] [get_bd_pins rst_ps8_0_99M/slowest_sync_clk] [get_bd_pins axi_gpio_control/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M00_ACLK] [get_bd_pins ps8_0_axi_periph/ACLK] [get_bd_pins axi_gpio_value/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M01_ACLK] [get_bd_pins zynq_ultra_ps_e_0/maxihpm1_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S01_ACLK] [get_bd_pins my_state_0/clock]
+  connect_bd_net -net zynq_ultra_ps_e_0_pl_clk0 [get_bd_pins zynq_ultra_ps_e_0/pl_clk0] [get_bd_pins zynq_ultra_ps_e_0/maxihpm0_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S00_ACLK] [get_bd_pins rst_ps8_0_99M/slowest_sync_clk] [get_bd_pins axi_gpio_control/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M00_ACLK] [get_bd_pins ps8_0_axi_periph/ACLK] [get_bd_pins axi_gpio_value/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M01_ACLK] [get_bd_pins zynq_ultra_ps_e_0/maxihpm1_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S01_ACLK] [get_bd_pins axi_gpio_addend/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M02_ACLK] [get_bd_pins my_state_0/clock]
   connect_bd_net -net zynq_ultra_ps_e_0_pl_resetn0 [get_bd_pins zynq_ultra_ps_e_0/pl_resetn0] [get_bd_pins rst_ps8_0_99M/ext_reset_in]
 
   # Create address segments
   assign_bd_address -offset 0xA0000000 -range 0x00010000 -with_name SEG_axi_gpio_0_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [get_bd_addr_segs axi_gpio_control/S_AXI/Reg] -force
   assign_bd_address -offset 0xA0010000 -range 0x00010000 -with_name SEG_axi_gpio_1_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [get_bd_addr_segs axi_gpio_value/S_AXI/Reg] -force
+  assign_bd_address -offset 0xA0040000 -range 0x00010000 -with_name SEG_axi_gpio_addend_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [get_bd_addr_segs axi_gpio_addend/S_AXI/Reg] -force
 
   # Perform GUI Layout
   regenerate_bd_layout -layout_string {

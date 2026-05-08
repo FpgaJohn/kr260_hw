@@ -1,8 +1,8 @@
 #!/bin/sh
 # gpio.sh — drive the my_state accumulator using devmem only.
 #
-# Run on the KR260 (needs /dev/mem, so root). The kr260_petalinux app must
-# already be loaded (xmutil loadapp kr260_petalinux) so the AXI GPIOs exist
+# Run on the KR260 (needs /dev/mem, so root). The kr260_hw app must
+# already be loaded (xmutil loadapp kr260_hw) so the AXI GPIOs exist
 # at the addresses below.
 #
 # Usage:  sudo ./gpio.sh [ADDEND]      (default ADDEND = 5)
