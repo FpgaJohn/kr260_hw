@@ -23,9 +23,8 @@
 		compatible = "xlnx,fclk";
 	};
 
-	/* axi_gpio_control — drives the my_state accumulator inputs.
-	 *   +0x00  ch1 DATA  — 2-bit opcode (0=noop, 1=add edge, 2=reset edge)
-	 *   +0x08  ch2 DATA  — 32-bit addend (value)
+	/* axi_gpio_control — single-channel, 2-bit opcode driving my_state.control.
+	 *   +0x00  DATA  — 2-bit opcode (0=noop, 1=add edge, 2=reset edge)
 	 *
 	 * Unit-name is "axi_gpio_control" rather than "gpio" so the platform
 	 * device name doesn't collide with the factory base DT's
@@ -46,5 +45,14 @@
 		clocks = <&zynqmp_clk 0x47>;
 		compatible = "generic-uio";
 		reg = <0x0 0xa0010000 0x0 0x10000>;
+	};
+
+	/* axi_gpio_addend — single-channel, 32-bit, drives my_state.value.
+	 * Split out from axi_gpio_control to sidestep the dual-channel ch2
+	 * write-latch synthesis bug; see kr260_hw.tcl comment on axi_gpio_control. */
+	axi_gpio_addend@a0040000 {
+		clocks = <&zynqmp_clk 0x47>;
+		compatible = "generic-uio";
+		reg = <0x0 0xa0040000 0x0 0x10000>;
 	};
 };
