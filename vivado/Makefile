@@ -21,7 +21,7 @@ all: xsa
 
 xsa: $(XSA)
 
-$(XSA): build.tcl kr260_hw.tcl ip/my_state.v constraints/cons.xdc
+$(XSA): build.tcl kr260_hw.tcl extend_design.tcl ip/my_state.v constraints/cons.xdc
 	. $(VIVADO_SETTINGS) && JOBS=$(JOBS) $(VIVADO) $(VIVADO_FLAGS) -source build.tcl
 
 clean:

@@ -13,6 +13,7 @@ set origin_dir_loc "."
 if { ![info exists ::env(APPDATA)] } { set ::env(APPDATA) [file normalize ~/.Xilinx] }
 
 source kr260_hw.tcl
+source extend_design.tcl
 
 # Force single-threaded synthesis. On memory-constrained boxes the
 # parallel_synth_helper can deadlock at 0% CPU after "Initializing timing

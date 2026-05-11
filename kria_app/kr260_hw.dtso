@@ -55,4 +55,21 @@
 		compatible = "generic-uio";
 		reg = <0x0 0xa0040000 0x0 0x10000>;
 	};
+
+	/* axi_fifo_0 — AXI4-Stream FIFO with internal TXD→RXD loopback.
+	 * 32-bit AXIS, AXI-Lite for both control and data via TDFD/RDFD. */
+	axi_fifo@a0050000 {
+		clocks = <&zynqmp_clk 0x47>;
+		compatible = "generic-uio";
+		reg = <0x0 0xa0050000 0x0 0x10000>;
+	};
+
+	/* axi_dma_0 — AXI DMA, no SG, 64-bit MM2S+S2MM. The MM2S→S2MM stream
+	 * passes through axis_data_fifo (1024-deep, 64-bit) so PS-mem writes
+	 * loop back to PS-mem reads. */
+	axi_dma@a0060000 {
+		clocks = <&zynqmp_clk 0x47>;
+		compatible = "generic-uio";
+		reg = <0x0 0xa0060000 0x0 0x10000>;
+	};
 };
