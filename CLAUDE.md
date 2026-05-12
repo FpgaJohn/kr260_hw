@@ -74,9 +74,11 @@ If you change the BD, regenerate the XSA (see "Building the XSA" below) and re-e
 
 ```bash
 cd vivado
-make            # → ./kr260_hw.xsa, project at ./kr260_hw/
+make SHELL=/bin/bash JOBS=1   # → ./kr260_hw.xsa, project at ./kr260_hw/
 make clean
 ```
+
+**Linux / WSL2 note:** `make` defaults to `/bin/sh`, but `settings64.sh` uses the `source` builtin (bash-only). Without `SHELL=/bin/bash` you get `/bin/sh: source: not found` and the build aborts immediately. Always pass `SHELL=/bin/bash` on Linux or WSL2.
 
 The Makefile sources `/tools/Xilinx/Vivado/2024.1/settings64.sh` (override with `VIVADO_SETTINGS=…`), runs `vivado -mode batch -source build.tcl`, and writes the XSA via `write_hw_platform -fixed -include_bit -force kr260_hw.xsa`. `build.tcl` stubs `APPDATA` (the script tries to use it, harmless on Linux) and forces `general.maxThreads 1` (Vivado's `parallel_synth_helper` deadlocks at 0% CPU on memory-constrained boxes; serialising costs a few minutes but is reliable).
 
