@@ -1,0 +1,19 @@
+# Generated Vivado project directories
+kr260_hw/
+kr260_hw.old/
+
+# Generated PS initialisation files (re-created by Vivado from kr260_hw.tcl)
+psu_init.c
+psu_init.h
+psu_init.html
+psu_init.tcl
+psu_init_gpl.c
+psu_init_gpl.h
+
+# Bitstreams (already embedded in kr260_hw.xsa)
+*.bit
+
+# Build logs and journals
+build.log
+*.jou
+*.log

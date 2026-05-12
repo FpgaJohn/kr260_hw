@@ -3,6 +3,7 @@ plat/
 win_hw/
 freertos_hw/
 .metadata/
-.analytics/
+.analytics
+.Xil/
 RemoteSystemsTempFiles/
 IDE.log
