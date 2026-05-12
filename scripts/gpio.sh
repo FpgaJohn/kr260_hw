@@ -8,9 +8,10 @@
 # Usage:  sudo ./gpio.sh [ADDEND]      (default ADDEND = 5)
 #
 # axi_gpio_control @ 0xA0000000:
-#   0x00  ch1 DATA  -- 2-bit opcode: 0=noop, 1=add (edge-triggered), 2=reset
-#   0x08  ch2 DATA  -- 32-bit addend
-# axi_gpio_value @ 0xA0010000:
+#   0x00  DATA  -- 2-bit opcode: 0=noop, 1=add (edge-triggered), 2=reset
+# axi_gpio_addend  @ 0xA0040000:
+#   0x00  DATA  -- 32-bit addend (separate IP to dodge dual-channel synth bug)
+# axi_gpio_value   @ 0xA0010000:
 #   0x00  ch1 DATA  -- accumulator[31:0]
 #   0x08  ch2 DATA  -- accumulator[63:32]
 
@@ -18,8 +19,8 @@ set -eu
 
 ADDEND=${1:-5}
 
-CTRL_OP=0xA0000000      # control ch1: opcode
-CTRL_VAL=0xA0000008     # control ch2: addend
+CTRL_OP=0xA0000000      # control: 2-bit opcode
+CTRL_VAL=0xA0040000     # addend: 32-bit value (separate IP)
 VAL_LO=0xA0010000       # value ch1: accumulator[31:0]
 VAL_HI=0xA0010008       # value ch2: accumulator[63:32]
 
