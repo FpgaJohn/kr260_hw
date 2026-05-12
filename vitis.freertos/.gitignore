@@ -1,0 +1,8 @@
+# Generated Vitis workspace — do not track
+plat/
+win_hw/
+freertos_hw/
+.metadata/
+.analytics/
+RemoteSystemsTempFiles/
+IDE.log

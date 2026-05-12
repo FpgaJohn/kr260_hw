@@ -797,6 +797,10 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
     CONFIG.PSU__USE__M_AXI_GP0 {1} \
     CONFIG.PSU__USE__M_AXI_GP1 {1} \
     CONFIG.PSU__USE__M_AXI_GP2 {0} \
+    CONFIG.PSU__USE__S_AXI_GP2 {1} \
+    CONFIG.PSU__SAXIGP2__DATA_WIDTH {64} \
+    CONFIG.PSU__USE__S_AXI_GP3 {1} \
+    CONFIG.PSU__SAXIGP3__DATA_WIDTH {64} \
   ] $zynq_ultra_ps_e_0
 
 
@@ -836,10 +840,10 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
 
 
   # Create instance: ps8_0_axi_periph, and set properties
-  # NUM_MI is 3: M00→axi_gpio_control, M01→axi_gpio_value, M02→axi_gpio_addend.
+  # NUM_MI is 5: M00→axi_gpio_control, M01→axi_gpio_value, M02→axi_gpio_addend, M03→axi_fifo_mm_s_0, M04→axi_dma_0.
   set ps8_0_axi_periph [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 ps8_0_axi_periph ]
   set_property -dict [list \
-    CONFIG.NUM_MI {3} \
+    CONFIG.NUM_MI {5} \
     CONFIG.NUM_SI {2} \
   ] $ps8_0_axi_periph
 
@@ -866,29 +870,73 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
      catch {common::send_gid_msg -ssname BD::TCL -id 2096 -severity "ERROR" "Unable to referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
      return 1
    }
-  
+
+  # AXI4-Stream FIFO (MM-to-S) — 64-bit, store-and-forward, TX→RX loopback.
+  set axi_fifo_mm_s_0 [ create_bd_cell -type ip -vlnv [lindex [lsort [get_ipdefs -filter {VLNV =~ xilinx.com:ip:axi_fifo_mm_s:*}]] end] axi_fifo_mm_s_0 ]
+  set_property -dict [list \
+    CONFIG.C_AXI_STR_TXD_TDATA_WIDTH {64} \
+    CONFIG.C_AXI_STR_RXD_TDATA_WIDTH {64} \
+    CONFIG.C_USE_TX_CTRL {0} \
+    CONFIG.C_USE_TX_CUT_THROUGH {0} \
+    CONFIG.C_USE_RX_CUT_THROUGH {0} \
+  ] $axi_fifo_mm_s_0
+
+  # AXI DMA — no scatter-gather, 64-bit, MM2S→HP0_FPD, S2MM→HP1_FPD.
+  set axi_dma_0 [ create_bd_cell -type ip -vlnv [lindex [lsort [get_ipdefs -filter {VLNV =~ xilinx.com:ip:axi_dma:*}]] end] axi_dma_0 ]
+  set_property -dict [list \
+    CONFIG.c_include_sg {0} \
+    CONFIG.c_sg_length_width {14} \
+    CONFIG.c_m_axi_mm2s_data_width {64} \
+    CONFIG.c_m_axi_s2mm_data_width {64} \
+    CONFIG.c_m_axis_mm2s_tdata_width {64} \
+    CONFIG.c_s_axis_s2mm_tdata_width {64} \
+    CONFIG.c_mm2s_burst_size {16} \
+    CONFIG.c_s2mm_burst_size {16} \
+  ] $axi_dma_0
+
+  # AXI4-Stream Data FIFO — 64-bit, bridges DMA MM2S to S2MM stream (loopback).
+  set axis_data_fifo_0 [ create_bd_cell -type ip -vlnv [lindex [lsort [get_ipdefs -filter {VLNV =~ xilinx.com:ip:axis_data_fifo:*}]] end] axis_data_fifo_0 ]
+  set_property -dict [list \
+    CONFIG.TDATA_NUM_BYTES {8} \
+  ] $axis_data_fifo_0
+
   # Create interface connections
   connect_bd_intf_net -intf_net ps8_0_axi_periph_M00_AXI [get_bd_intf_pins ps8_0_axi_periph/M00_AXI] [get_bd_intf_pins axi_gpio_control/S_AXI]
   connect_bd_intf_net -intf_net ps8_0_axi_periph_M01_AXI [get_bd_intf_pins ps8_0_axi_periph/M01_AXI] [get_bd_intf_pins axi_gpio_value/S_AXI]
   connect_bd_intf_net -intf_net ps8_0_axi_periph_M02_AXI [get_bd_intf_pins ps8_0_axi_periph/M02_AXI] [get_bd_intf_pins axi_gpio_addend/S_AXI]
   connect_bd_intf_net -intf_net zynq_ultra_ps_e_0_M_AXI_HPM0_FPD [get_bd_intf_pins zynq_ultra_ps_e_0/M_AXI_HPM0_FPD] [get_bd_intf_pins ps8_0_axi_periph/S00_AXI]
   connect_bd_intf_net -intf_net zynq_ultra_ps_e_0_M_AXI_HPM1_FPD [get_bd_intf_pins zynq_ultra_ps_e_0/M_AXI_HPM1_FPD] [get_bd_intf_pins ps8_0_axi_periph/S01_AXI]
+  set fifo_s_axi [lindex [get_bd_intf_pins -filter {VLNV =~ xilinx.com:interface:aximm_rtl:* && MODE == Slave} -of_objects [get_bd_cells axi_fifo_mm_s_0]] 0]
+  connect_bd_intf_net -intf_net ps8_0_axi_periph_M03_AXI [get_bd_intf_pins ps8_0_axi_periph/M03_AXI] $fifo_s_axi
+  set dma_s_axilite [lindex [get_bd_intf_pins -filter {VLNV =~ xilinx.com:interface:aximm_rtl:* && MODE == Slave} -of_objects [get_bd_cells axi_dma_0]] 0]
+  connect_bd_intf_net -intf_net ps8_0_axi_periph_M04_AXI [get_bd_intf_pins ps8_0_axi_periph/M04_AXI] $dma_s_axilite
+  set fifo_txd [lindex [get_bd_intf_pins -filter {VLNV =~ xilinx.com:interface:axis_rtl:* && MODE == Master} -of_objects [get_bd_cells axi_fifo_mm_s_0]] 0]
+  set fifo_rxd [lindex [get_bd_intf_pins -filter {VLNV =~ xilinx.com:interface:axis_rtl:* && MODE == Slave} -of_objects [get_bd_cells axi_fifo_mm_s_0]] 0]
+  connect_bd_intf_net -intf_net axi_fifo_mm_s_0_loopback $fifo_txd $fifo_rxd
+  connect_bd_intf_net -intf_net axi_dma_0_M_AXIS_MM2S [get_bd_intf_pins axi_dma_0/M_AXIS_MM2S] [get_bd_intf_pins axis_data_fifo_0/S_AXIS]
+  connect_bd_intf_net -intf_net axis_data_fifo_0_M_AXIS [get_bd_intf_pins axis_data_fifo_0/M_AXIS] [get_bd_intf_pins axi_dma_0/S_AXIS_S2MM]
+  connect_bd_intf_net -intf_net axi_dma_0_M_AXI_MM2S [get_bd_intf_pins axi_dma_0/M_AXI_MM2S] [get_bd_intf_pins zynq_ultra_ps_e_0/S_AXI_HP0_FPD]
+  connect_bd_intf_net -intf_net axi_dma_0_M_AXI_S2MM [get_bd_intf_pins axi_dma_0/M_AXI_S2MM] [get_bd_intf_pins zynq_ultra_ps_e_0/S_AXI_HP1_FPD]
 
   # Create port connections
   connect_bd_net -net axi_gpio_addend_gpio_io_o [get_bd_pins axi_gpio_addend/gpio_io_o] [get_bd_pins my_state_0/value]
   connect_bd_net -net axi_gpio_control_gpio_io_o [get_bd_pins axi_gpio_control/gpio_io_o] [get_bd_pins my_state_0/control]
   connect_bd_net -net my_state_0_carry [get_bd_pins my_state_0/carry] [get_bd_pins axi_gpio_value/gpio2_io_i]
   connect_bd_net -net my_state_0_sum [get_bd_pins my_state_0/sum] [get_bd_pins axi_gpio_value/gpio_io_i]
-  connect_bd_net -net rst_ps8_0_99M_peripheral_aresetn [get_bd_pins rst_ps8_0_99M/peripheral_aresetn] [get_bd_pins ps8_0_axi_periph/S00_ARESETN] [get_bd_pins axi_gpio_control/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M00_ARESETN] [get_bd_pins ps8_0_axi_periph/ARESETN] [get_bd_pins axi_gpio_value/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M01_ARESETN] [get_bd_pins ps8_0_axi_periph/S01_ARESETN] [get_bd_pins axi_gpio_addend/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M02_ARESETN] [get_bd_pins my_state_0/resetn]
+  connect_bd_net -net rst_ps8_0_99M_peripheral_aresetn [get_bd_pins rst_ps8_0_99M/peripheral_aresetn] [get_bd_pins ps8_0_axi_periph/S00_ARESETN] [get_bd_pins axi_gpio_control/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M00_ARESETN] [get_bd_pins ps8_0_axi_periph/ARESETN] [get_bd_pins axi_gpio_value/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M01_ARESETN] [get_bd_pins ps8_0_axi_periph/S01_ARESETN] [get_bd_pins axi_gpio_addend/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M02_ARESETN] [get_bd_pins my_state_0/resetn] [get_bd_pins axi_fifo_mm_s_0/s_axi_aresetn] [get_bd_pins ps8_0_axi_periph/M03_ARESETN] [get_bd_pins ps8_0_axi_periph/M04_ARESETN] [get_bd_pins axi_dma_0/axi_resetn] [get_bd_pins axis_data_fifo_0/s_axis_aresetn]
   connect_bd_net -net xlslice_0_Dout [get_bd_pins xlslice_0/Dout] [get_bd_ports fan_en_b]
   connect_bd_net -net zynq_ultra_ps_e_0_emio_ttc0_wave_o [get_bd_pins zynq_ultra_ps_e_0/emio_ttc0_wave_o] [get_bd_pins xlslice_0/Din]
-  connect_bd_net -net zynq_ultra_ps_e_0_pl_clk0 [get_bd_pins zynq_ultra_ps_e_0/pl_clk0] [get_bd_pins zynq_ultra_ps_e_0/maxihpm0_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S00_ACLK] [get_bd_pins rst_ps8_0_99M/slowest_sync_clk] [get_bd_pins axi_gpio_control/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M00_ACLK] [get_bd_pins ps8_0_axi_periph/ACLK] [get_bd_pins axi_gpio_value/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M01_ACLK] [get_bd_pins zynq_ultra_ps_e_0/maxihpm1_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S01_ACLK] [get_bd_pins axi_gpio_addend/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M02_ACLK] [get_bd_pins my_state_0/clock]
+  connect_bd_net -net zynq_ultra_ps_e_0_pl_clk0 [get_bd_pins zynq_ultra_ps_e_0/pl_clk0] [get_bd_pins zynq_ultra_ps_e_0/maxihpm0_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S00_ACLK] [get_bd_pins rst_ps8_0_99M/slowest_sync_clk] [get_bd_pins axi_gpio_control/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M00_ACLK] [get_bd_pins ps8_0_axi_periph/ACLK] [get_bd_pins axi_gpio_value/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M01_ACLK] [get_bd_pins zynq_ultra_ps_e_0/maxihpm1_fpd_aclk] [get_bd_pins ps8_0_axi_periph/S01_ACLK] [get_bd_pins axi_gpio_addend/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M02_ACLK] [get_bd_pins my_state_0/clock] [get_bd_pins axi_fifo_mm_s_0/s_axi_aclk] [get_bd_pins ps8_0_axi_periph/M03_ACLK] [get_bd_pins ps8_0_axi_periph/M04_ACLK] [get_bd_pins axi_dma_0/s_axi_lite_aclk] [get_bd_pins axi_dma_0/m_axi_mm2s_aclk] [get_bd_pins axi_dma_0/m_axi_s2mm_aclk] [get_bd_pins axis_data_fifo_0/s_axis_aclk] [get_bd_pins zynq_ultra_ps_e_0/saxihp0_fpd_aclk] [get_bd_pins zynq_ultra_ps_e_0/saxihp1_fpd_aclk]
   connect_bd_net -net zynq_ultra_ps_e_0_pl_resetn0 [get_bd_pins zynq_ultra_ps_e_0/pl_resetn0] [get_bd_pins rst_ps8_0_99M/ext_reset_in]
 
   # Create address segments
   assign_bd_address -offset 0xA0000000 -range 0x00010000 -with_name SEG_axi_gpio_0_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [get_bd_addr_segs axi_gpio_control/S_AXI/Reg] -force
   assign_bd_address -offset 0xA0010000 -range 0x00010000 -with_name SEG_axi_gpio_1_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [get_bd_addr_segs axi_gpio_value/S_AXI/Reg] -force
   assign_bd_address -offset 0xA0040000 -range 0x00010000 -with_name SEG_axi_gpio_addend_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [get_bd_addr_segs axi_gpio_addend/S_AXI/Reg] -force
+  assign_bd_address -offset 0xA0020000 -range 0x00010000 -with_name SEG_axi_fifo_mm_s_0_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [lindex [get_bd_addr_segs -of_objects [get_bd_cells axi_fifo_mm_s_0]] 0] -force
+  assign_bd_address -offset 0xA0050000 -range 0x00010000 -with_name SEG_axi_dma_0_Reg -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [lindex [get_bd_addr_segs -of_objects [get_bd_cells axi_dma_0]] 0] -force
+  assign_bd_address -offset 0x00000000 -range 0x80000000 -target_address_space [get_bd_addr_spaces axi_dma_0/Data_MM2S] [get_bd_addr_segs zynq_ultra_ps_e_0/SAXIGP2/HP0_DDR_LOW] -force
+  assign_bd_address -offset 0x00000000 -range 0x80000000 -target_address_space [get_bd_addr_spaces axi_dma_0/Data_S2MM] [get_bd_addr_segs zynq_ultra_ps_e_0/SAXIGP3/HP1_DDR_LOW] -force
 
   # Perform GUI Layout
   regenerate_bd_layout -layout_string {
@@ -937,13 +985,18 @@ cr_bd_design_1 ""
 set_property REGISTERED_WITH_MANAGER "1" [get_files design_1.bd ] 
 set_property SYNTH_CHECKPOINT_MODE "Hierarchical" [get_files design_1.bd ] 
 
-#call make_wrapper to create wrapper files
+# Generate targets before wrapping (required in Vivado 2024.x)
+generate_target all [get_files design_1.bd]
+
+# Create HDL wrapper
 if { [get_property IS_LOCKED [ get_files -norecurse [list design_1.bd]] ] == 1  } {
   import_files -fileset sources_1 [file normalize "${origin_dir}/kr260_hw/kr260_hw.gen/sources_1/bd/design_1/hdl/design_1_wrapper.v" ]
 } else {
   set wrapper_path [make_wrapper -fileset sources_1 -files [ get_files -norecurse [list design_1.bd]] -top]
   add_files -norecurse -fileset sources_1 $wrapper_path
 }
+set_property top design_1_wrapper [current_fileset]
+update_compile_order -fileset sources_1
 
 
 set idrFlowPropertiesConstraints ""
