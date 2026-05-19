@@ -13,15 +13,18 @@ This is a separate project from the `arty_*` and `fpganow` trees in `/home/john/
 ```
 vivado/kr260_hw.tcl       # Vivado project-recreation script — source of truth for the BD
 vivado/kr260_hw.xsa       # exported hardware handoff (consumed by kria_app/)
+vivado/ip/my_state.v      # the only tracked HDL source — 64-bit accumulator module
 vivado/constraints/cons.xdc
 kria_app/                 # packages vivado/kr260_hw.xsa as a Kria runtime app
+kria_app/INSTALL.md       # full install, load, verify, and troubleshooting guide
 scripts/                  # helper shell scripts that run on the KR260
 Makefile                  # top-level: ships scripts/ to the board over ssh
 vitis.freertos/           # Vitis XSCT workspace — bare-metal and FreeRTOS apps
+bug.txt                   # detailed analysis of the AXI GPIO dual-channel write-latch bug
 kria_app_eth/             # OUT OF SCOPE here — separate, larger design (its own XSA, FIFOs/DMAs/my_state)
 ```
 
-There are no checked-in HDL sources and no `vivado/kr260_hw/` project directory in git — `vivado/kr260_hw.tcl` regenerates everything. The block design lives inline in the script (proc `cr_bd_design_1`, around line 225+).
+There is one checked-in HDL source (`vivado/ip/my_state.v`) but no `vivado/kr260_hw/` project directory in git — `vivado/kr260_hw.tcl` regenerates everything. The block design lives inline in the script (proc `cr_bd_design_1`, around line 225+).
 
 `kria_app_eth/` is unrelated to the BD in `vivado/kr260_hw.tcl`; do **not** mix its address map, dtso, or `gpio.sh`-style scripts into work on `kr260_hw`.
 
@@ -66,7 +69,7 @@ Address map:
 | `axi_gpio_addend` | `0xA004_0000` | 16 KB | out — 32-bit addend |
 | `axi_dma_0` | `0xA005_0000` | 16 KB | RW — DMA control registers |
 
-A known-good runtime smoke test for the GPIO/my_state part lives at `scripts/gpio.sh`. **Note:** `gpio.sh` currently uses the old address layout (addend at `0xA000_0008`); needs updating to write the addend to `0xA004_0000` instead. The FIFO and DMA tests are exercised by the Vitis bare-metal and FreeRTOS apps.
+A known-good runtime smoke test for the GPIO/my_state part lives at `scripts/gpio.sh` — run `sudo ./gpio.sh [ADDEND]` after `xmutil loadapp kr260_hw`. The FIFO and DMA tests are exercised by the Vitis bare-metal and FreeRTOS apps.
 
 If you change the BD, regenerate the XSA (see "Building the XSA" below) and re-export the script with `write_project_tcl -force ../kr260_hw.tcl` (run from the project dir) so the repo stays self-bootstrapping.
 
@@ -158,7 +161,7 @@ Both run scripts boot JTAG mode, program the PL, run FSBL, then load and run the
 - `vitis.freertos/src/baremetal_main.c` — bare-metal GPIO + my_state test, AXI Stream FIFO loopback test, AXI DMA loopback test
 - `vitis.freertos/src/freertos_main.c` — same three tests under FreeRTOS (single task with `vTaskDelay` between poll loops)
 
-**AXI Stream FIFO test** (`axi_fifo_mm_s_0` @ `0xA002_0000`): writes two 64-bit words via TDFD/TDFD_U registers, triggers TX with TLR, polls RDFO for RX data, reads back and compares via RDFD/RDFD_U. Verifies store-and-forward loopback at register level.
+**AXI Stream FIFO test** (`axi_fifo_mm_s_0` @ `0xA002_0000`): writes two 32-bit words via TDFD, triggers TX with TLR (8 bytes), polls RDFO for RX data, reads back and compares via RDFD. The stream is 64-bit wide in hardware; each pair of TDFD writes makes one 64-bit AXI-Stream transfer. Verifies store-and-forward loopback at register level.
 
 **AXI DMA test** (`axi_dma_0` @ `0xA005_0000`): fills a 64-byte src buffer, flushes data cache, starts S2MM then MM2S, polls DMASR for Idle, invalidates dst cache, compares dst to src. Exercises the full DDR→stream→DDR path via HP0/HP1 ports.
 
@@ -168,11 +171,12 @@ Both run scripts boot JTAG mode, program the PL, run FSBL, then load and run the
 
 The repo-root `Makefile` is for **interacting with the running board**, not for building. It assumes ssh to `ubuntu@kr260u` is set up.
 
-- `make` (default `info`) — scp's `list_uio.sh` to `~/` on the board and runs it. Prints SoC temperatures and the `/sys/class/uio/uio*` table (UIO index → name → AXI address).
+- `make` (default `info`) — tries to scp `list_uio.sh` from the **current directory** (not `scripts/`) to `~/` on the board and run it. **Note:** the file lives in `scripts/`, so this target fails unless you `cd scripts` first or fix `SCRIPT := scripts/list_uio.sh`. Use `make deploy` then run the script manually instead.
 - `make deploy` — scp's all of `scripts/` to `~/` on the board.
 
 `scripts/` contents:
 - `list_uio.sh` — temps + UIO listing (read-only inspection).
 - `mod_probe.sh` — rebinds the generic UIO driver: `modprobe -r uio_pdrv_genirq; modprobe uio_pdrv_genirq of_id=generic-uio`. Run after a fresh `loadapp` if your nodes set `compatible = "generic-uio"` but `/dev/uioN` doesn't appear.
-- `load_app.sh` — wrapper around `xmutil listapps`.
-- `gpio.sh` — drives the `my_state` accumulator from the PS via `devmem`. Run `sudo ./gpio.sh [ADDEND]` after `xmutil loadapp kr260_hw`. **Stale:** currently writes the addend to `0xA000_0008` (old dual-channel layout); needs updating to use `0xA004_0000` (`axi_gpio_addend`). **Not** valid against the `kria_app_eth` (`kr260_petalinux`) bitstream.
+- `load_app.sh` / `list_apps.sh` — thin wrappers around `xmutil loadapp` / `xmutil listapps`.
+- `update_app.sh` — removes the installed app from `/lib/firmware/xilinx/` and moves the new version in; run on the board after `make deploy` to refresh the package.
+- `gpio.sh` — drives the `my_state` accumulator from the PS via `devmem` (reset → set addend → pulse ADD × 2, print accumulator). Uses the current address layout (`axi_gpio_control` @ `0xA000_0000`, `axi_gpio_addend` @ `0xA004_0000`, `axi_gpio_value` @ `0xA001_0000`). **Not** valid against the `kria_app_eth` (`kr260_petalinux`) bitstream.
