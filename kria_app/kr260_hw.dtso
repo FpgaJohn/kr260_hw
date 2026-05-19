@@ -23,53 +23,44 @@
 		compatible = "xlnx,fclk";
 	};
 
-	/* axi_gpio_control — single-channel, 2-bit opcode driving my_state.control.
-	 *   +0x00  DATA  — 2-bit opcode (0=noop, 1=add edge, 2=reset edge)
-	 *
-	 * Unit-name is "axi_gpio_control" rather than "gpio" so the platform
-	 * device name doesn't collide with the factory base DT's
-	 * gpio@a0000000 stub — see INSTALL.md "Address conflict". */
-	axi_gpio_control@a0000000 {
+	/* IPs moved into HPM0_LPD's 0x8000_0000+ aperture (Exp2: control plane
+	 * via M_AXI_HPM0_LPD instead of M_AXI_HPM0_FPD).
+	 * Old addresses were 0xA000_0000+, unreachable through the LPD master. */
+
+	/* axi_gpio_control — single-channel, 2-bit opcode driving my_state.control. */
+	axi_gpio_control@80000000 {
 		clocks = <&zynqmp_clk 0x47>;
 		compatible = "generic-uio";
-		reg = <0x0 0xa0000000 0x0 0x10000>;
+		reg = <0x0 0x80000000 0x0 0x10000>;
 	};
 
-	/* axi_gpio_value — reads back the 64-bit accumulator.
-	 *   +0x00  ch1 DATA  — accumulator[31:0]
-	 *   +0x08  ch2 DATA  — accumulator[63:32]
-	 *
-	 * Factory base DT exposes i2c@a0010000 at this address; using a
-	 * different unit-name avoids the sysfs duplicate-name path. */
-	axi_gpio_value@a0010000 {
+	/* axi_gpio_value — reads back the 64-bit accumulator (ch1=lo, ch2=hi). */
+	axi_gpio_value@80010000 {
 		clocks = <&zynqmp_clk 0x47>;
 		compatible = "generic-uio";
-		reg = <0x0 0xa0010000 0x0 0x10000>;
+		reg = <0x0 0x80010000 0x0 0x10000>;
 	};
 
-	/* axi_gpio_addend — single-channel, 32-bit, drives my_state.value.
-	 * Split out from axi_gpio_control to sidestep the dual-channel ch2
-	 * write-latch synthesis bug; see kr260_hw.tcl comment on axi_gpio_control. */
-	axi_gpio_addend@a0040000 {
+	/* axi_gpio_addend — 32-bit, drives my_state.value. */
+	axi_gpio_addend@80020000 {
 		clocks = <&zynqmp_clk 0x47>;
 		compatible = "generic-uio";
-		reg = <0x0 0xa0040000 0x0 0x10000>;
+		reg = <0x0 0x80020000 0x0 0x10000>;
 	};
 
-	/* axi_fifo_0 — AXI4-Stream FIFO with internal TXD→RXD loopback.
-	 * 32-bit AXIS, AXI-Lite for both control and data via TDFD/RDFD. */
-	axi_fifo@a0050000 {
+	/* axi_fifo_0 — AXI4-Lite simple FIFO with internal echo. */
+	axi_fifo@80030000 {
 		clocks = <&zynqmp_clk 0x47>;
 		compatible = "generic-uio";
-		reg = <0x0 0xa0050000 0x0 0x10000>;
+		reg = <0x0 0x80030000 0x0 0x10000>;
 	};
 
-	/* axi_dma_0 — AXI DMA, no SG, 64-bit MM2S+S2MM. The MM2S→S2MM stream
-	 * passes through axis_data_fifo (1024-deep, 64-bit) so PS-mem writes
-	 * loop back to PS-mem reads. */
-	axi_dma@a0060000 {
+	/* axi_dma_0 — AXI DMA, no SG, 64-bit MM2S+S2MM. MM2S→axis_data_fifo→S2MM
+	 * loopback in PL. dma-coherent + PSU__AFI0_COHERENCY=1 → HPC0 snoop. */
+	axi_dma@80040000 {
 		clocks = <&zynqmp_clk 0x47>;
 		compatible = "generic-uio";
-		reg = <0x0 0xa0060000 0x0 0x10000>;
+		reg = <0x0 0x80040000 0x0 0x10000>;
+		dma-coherent;
 	};
 };
