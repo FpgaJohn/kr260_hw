@@ -1,3 +1,4 @@
+SHELL           := /bin/bash
 APP_NAME := kr260_hw
 XSA      := ../vivado/kr260_hw.xsa
 XSA_BIT  := kr260_hw.bit

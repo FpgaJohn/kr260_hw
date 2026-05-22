@@ -4,6 +4,7 @@
 #
 # Run from this directory: `make`.
 
+SHELL           := /bin/bash
 VIVADO_SETTINGS ?= /tools/Xilinx/Vivado/2024.1/settings64.sh
 VIVADO          ?= vivado
 JOBS            ?= 1
@@ -19,9 +20,7 @@ VIVADO_FLAGS := -mode batch -nojournal -log build.log
 
 all: xsa
 
-xsa: $(XSA)
-
-$(XSA): build.tcl kr260_hw.tcl extend_design.tcl ip/my_state.v constraints/cons.xdc
+xsa:
 	. $(VIVADO_SETTINGS) && JOBS=$(JOBS) $(VIVADO) $(VIVADO_FLAGS) -source build.tcl
 
 clean:

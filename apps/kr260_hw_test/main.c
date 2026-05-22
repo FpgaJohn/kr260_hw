@@ -442,19 +442,12 @@ int main(void)
     if (!ctrl || !addend || !val || !fifo || !dma) return 1;
 
     int fails = 0;
-    int dma_fails;
     fails += test_accumulator(ctrl, addend, val);
     fails += test_fifo(fifo);
-    dma_fails = test_dma(dma);
+    fails += test_dma(dma);
 
-    /* DMA is currently broken — the M_AXI master path through smc → S_AXI_HP0_FPD
-     * silently stalls (SR=0 forever) regardless of whether MM2S+S2MM are paired
-     * or MM2S runs alone. SMMU isn't the issue (no iommu groups), nor is buffer
-     * placement (hangs even on PA=0x42a00000 in CMA region). Suspected: HP0 fabric
-     * setup at boot. Reported as a known-broken section, not counted in fails. */
     printf("\n=========================================\n");
-    printf("Accumulator + FIFO: %s\n", fails == 0 ? "PASS" : "FAIL");
-    printf("DMA echo:           %s (known-broken)\n", dma_fails == 0 ? "PASS" : "FAIL");
+    printf("Accumulator + FIFO + DMA: %s\n", fails == 0 ? "PASS" : "FAIL");
     printf("=========================================\n");
     return fails == 0 ? 0 : 1;
 }

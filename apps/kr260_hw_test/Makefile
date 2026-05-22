@@ -1,17 +1,18 @@
-# Cross-compile kr260_hw_test for the KR260's cortexa72 sysroot.
+# Cross-compile kr260_hw_test for the KR260 (Ubuntu, aarch64).
 #
-# The PetaLinux SDK at $(SDK)/environment-setup-cortexa72-cortexa53-xilinx-linux
-# sets CC, CXX, CFLAGS, LDFLAGS to the right cross-toolchain. Source it, then
-# `make`.
-
-SDK ?= /home/john/work/kr260_petalinux/sdk
-ENV := $(SDK)/environment-setup-cortexa72-cortexa53-xilinx-linux
+# Default toolchain is Debian/Ubuntu's gcc-aarch64-linux-gnu package:
+#   sudo apt install gcc-aarch64-linux-gnu
+# main.c uses only stdlib + standard Linux syscalls, so no Xilinx sysroot
+# is needed. Override CC=... if you want to use a different cross-gcc
+# (e.g. the PetaLinux SDK's aarch64-xilinx-linux-gcc).
 
 TARGET := kr260_hw_test
 
-# When the SDK env is sourced, $(CC) is the cross gcc with sysroot wired in.
-# Fall back to a bare `aarch64-...-gcc` if env not sourced (will fail visibly).
-CC ?= aarch64-xilinx-linux-gcc
+# CC must be `=`, not `?=` — make defines CC=cc as a built-in, so `?=` would
+# silently keep the host x86_64 compiler and fail on the ARM64 inline asm
+# (dsb / dc cvac / dc civac) in main.c. `=` still allows `make CC=...` from
+# the command line, because command-line assignments outrank Makefile ones.
+CC = aarch64-linux-gnu-gcc
 CFLAGS ?= -O2 -Wall -Wextra -std=gnu11
 
 REMOTE_HOST ?= kr260u

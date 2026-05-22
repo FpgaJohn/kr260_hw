@@ -29,7 +29,7 @@ ssh -t ubuntu@kr260u '
 You also need:
 - Vivado 2024.1 at `/tools/Xilinx/Vivado/2024.1/`
 - PetaLinux 2024.1 at `/tools/Xilinx/PetaLinux/2024.1/` (for `bootgen` + `dtc -@`)
-- A PetaLinux cortexa72 SDK at `/home/john/work/kr260_petalinux/sdk/` for the cross-compiler (used only when rebuilding the userspace test binary; the prebuilt binary at `apps/kr260_hw_test/kr260_hw_test` is already aarch64 and works as-is)
+- An aarch64 cross-compiler for rebuilding the userspace test binary. Ubuntu's `gcc-aarch64-linux-gnu` package (`sudo apt install gcc-aarch64-linux-gnu`) is the default and is all you need — `apps/kr260_hw_test/main.c` uses only stdlib + standard Linux syscalls, no Xilinx sysroot. The PetaLinux SDK works too if you already have one; pass `CC=aarch64-xilinx-linux-gcc` to make. The prebuilt binary at `apps/kr260_hw_test/kr260_hw_test` is already aarch64 and works as-is.
 
 ---
 
@@ -144,12 +144,15 @@ matches the in-tree source and is aarch64, so you only need to rebuild
 this if you edited `main.c`:
 
 ```sh
+sudo apt install gcc-aarch64-linux-gnu       # one-time, host side
 cd /home/john/work/kr260_hw/apps/kr260_hw_test
-source /home/john/work/kr260_petalinux/sdk/environment-setup-cortexa72-cortexa53-xilinx-linux
 make clean
 make
 file kr260_hw_test    # → ELF 64-bit LSB pie executable, ARM aarch64
 ```
+
+To build with the PetaLinux SDK instead, pass `CC` on the make line:
+`make CC=aarch64-xilinx-linux-gcc` (after sourcing the SDK env).
 
 ## 7. Deploy to the KR260
 
@@ -200,8 +203,11 @@ sudo /tmp/kr260_hw_test
 Expected output ends with:
 
 ```
-Accumulator + FIFO: PASS
-DMA echo:           PASS (4096 bytes round-tripped)
+  DMA echo: PASS (4096 bytes round-tripped)
+
+=========================================
+Accumulator + FIFO + DMA: PASS
+=========================================
 ```
 
 If `xmutil unloadapp` returns `-1`, retry with the explicit slot name:
@@ -252,9 +258,8 @@ make deploy                                # → ubuntu@kr260u:~/kr260_hw
 
 ```sh
 cd /home/john/work/kr260_hw/apps/kr260_hw_test
-. /home/john/work/kr260_petalinux/sdk/environment-setup-cortexa72-cortexa53-xilinx-linux
 make clean
-make
+make                                       # uses aarch64-linux-gnu-gcc by default
 make deploy                                # → ubuntu@kr260u:/tmp/kr260_hw_test
 ```
 
