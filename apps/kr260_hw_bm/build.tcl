@@ -16,7 +16,7 @@ set ws_path  [file normalize "$this_dir/vitis_ws"]
 set platform kr260_hw
 set app      kr260_hw_bm
 # KR260 = ZynqMP ZU5EV: quad Cortex-A53 APU + dual Cortex-R5F RPU. No A72.
-set domain   standalone_psu_cortexa53_0
+set domain   standalone_domain
 set cpu      psu_cortexa53_0
 
 puts "build.tcl: workspace = $ws_path"
@@ -30,7 +30,9 @@ file mkdir $ws_path
 setws $ws_path
 
 # Create platform if not already present
-if {[lsearch [platform list] $platform] < 0} {
+# Wrap in catch: xsct throws "No platform exist" on an empty workspace
+# instead of returning an empty list.
+if {[catch {platform list} existing] || [lsearch $existing $platform] < 0} {
     puts "build.tcl: creating platform $platform"
     platform create -name $platform -hw $xsa_path -proc $cpu \
                     -os standalone -fsbl-target $cpu
@@ -42,7 +44,8 @@ if {[lsearch [platform list] $platform] < 0} {
 }
 
 # Create application if not already present
-if {[lsearch [app list] $app] < 0} {
+# Same catch: xsct throws "No application exist" on an empty workspace.
+if {[catch {app list} existing] || [lsearch $existing $app] < 0} {
     puts "build.tcl: creating app $app"
     app create -name $app -platform $platform -domain $domain \
                -template "Empty Application(C)" -lang C

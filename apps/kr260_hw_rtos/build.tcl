@@ -34,7 +34,9 @@ file mkdir $ws_path
 setws $ws_path
 
 # Create platform + FreeRTOS domain if not already present.
-if {[lsearch [platform list] $platform] < 0} {
+# Wrap in catch: xsct throws "No platform exist" on an empty workspace
+# instead of returning an empty list.
+if {[catch {platform list} existing] || [lsearch $existing $platform] < 0} {
     puts "build.tcl: creating platform $platform with FreeRTOS domain"
     platform create -name $platform -hw $xsa_path
     domain create -name $domain -proc $cpu -os freertos10_xilinx
@@ -46,7 +48,8 @@ if {[lsearch [platform list] $platform] < 0} {
 }
 
 # Create application if not already present.
-if {[lsearch [app list] $app] < 0} {
+# Same catch: xsct throws "No application exist" on an empty workspace.
+if {[catch {app list} existing] || [lsearch $existing $app] < 0} {
     puts "build.tcl: creating app $app"
     app create -name $app -platform $platform -domain $domain \
                -template "Empty Application(C)" -lang C
