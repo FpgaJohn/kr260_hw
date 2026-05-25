@@ -3,7 +3,7 @@
 Single-file bare-metal app to exercise the kr260_hw bitstream:
 
 1. **GPIO accumulator** — `axi_gpio_control` / `axi_gpio_addend` / `axi_gpio_value` driving `my_state`.
-2. **simple_fifo** — push/pop the custom Verilog FIFO at `0xA0050000`.
+2. **simple_fifo** — push/pop the custom Verilog FIFO at `0x80030000`.
 3. **AXI DMA echo** — mem → `axi_dma_0/MM2S` → `axis_data_fifo` → `axi_dma_0/S2MM` → mem.
 
 Target: KR260 SOM, ZynqMP ZU5EV, Cortex-A53 #0 (psu_cortexa53_0).

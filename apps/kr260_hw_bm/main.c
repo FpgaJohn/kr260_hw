@@ -2,8 +2,8 @@
  * kr260_hw_bm — bare-metal test for the kr260_hw bitstream.
  *
  * Drop into a Vitis "Standalone Empty Application" project targeting the
- * kr260_hw.xsa platform (cortexa72_0). Single source file with main() plus
- * three helpers (test_gpio, test_fifo, test_dma_fifo) — no BSP-specific
+ * kr260_hw.xsa platform (psu_cortexa53_0). Single source file with main()
+ * plus three helpers (test_gpio, test_fifo, test_dma_fifo) — no BSP-specific
  * dependencies beyond the standard Xilinx standalone library (xil_io,
  * xil_cache, xil_printf, sleep).
  *
@@ -15,12 +15,12 @@
  *   - No SMMU / HP0 fabric oddities to worry about; bare-metal runs at EL3
  *     and the AXI bus is wide-open.
  *
- * Hardware (matches kr260_hw.tcl + extend_design.tcl):
- *   axi_gpio_control  @ 0xA000_0000  2-bit opcode out → my_state.control
- *   axi_gpio_value    @ 0xA001_0000  dual-channel in  ← my_state.{sum,carry}
- *   axi_gpio_addend   @ 0xA004_0000  32-bit out       → my_state.value
- *   axi_fifo_0        @ 0xA005_0000  custom simple_fifo (push/pop @ 0x00)
- *   axi_dma_0         @ 0xA006_0000  AXI DMA, MM2S→axis_data_fifo→S2MM
+ * Hardware (matches kr260_hw.tcl + extend_design.tcl, LPD aperture):
+ *   axi_gpio_control  @ 0x8000_0000  2-bit opcode out → my_state.control
+ *   axi_gpio_value    @ 0x8001_0000  dual-channel in  ← my_state.{sum,carry}
+ *   axi_gpio_addend   @ 0x8002_0000  32-bit out       → my_state.value
+ *   axi_fifo_0        @ 0x8003_0000  custom simple_fifo (push/pop @ 0x00)
+ *   axi_dma_0         @ 0x8004_0000  AXI DMA, MM2S→axis_data_fifo→S2MM
  */
 
 #include <stdint.h>
@@ -31,12 +31,12 @@
 #include "xil_cache.h"
 #include "xparameters.h"
 
-/* ---- Address map (matches the BD) ---- */
-#define ADDR_GPIO_CONTROL  0xA0000000UL
-#define ADDR_GPIO_VALUE    0xA0010000UL
-#define ADDR_GPIO_ADDEND   0xA0040000UL
-#define ADDR_AXI_FIFO      0xA0050000UL
-#define ADDR_AXI_DMA       0xA0060000UL
+/* ---- Address map (LPD aperture; matches extend_design.tcl) ---- */
+#define ADDR_GPIO_CONTROL  0x80000000UL
+#define ADDR_GPIO_VALUE    0x80010000UL
+#define ADDR_GPIO_ADDEND   0x80020000UL
+#define ADDR_AXI_FIFO      0x80030000UL
+#define ADDR_AXI_DMA       0x80040000UL
 
 /* ---- AXI GPIO (Xilinx PG144) — single-channel layout ---- */
 #define GPIO_DATA  0x00

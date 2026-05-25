@@ -3,7 +3,35 @@ KR260_USER ?= ubuntu
 SCRIPT     := list_uio.sh
 REMOTE_DIR := /home/$(KR260_USER)
 
-.PHONY: info deploy deploy-run
+MAKEFLAGS += --no-print-directory
+
+.PHONY: info deploy deploy-run xsa xsa-clean
+
+# Step 1 - Build Vivado Project and Export XSA
+xsa:
+	$(MAKE) -C vivado xsa
+
+xsa-clean:
+	$(MAKE) -C vivado clean
+
+# [BARE-METAL] Step 2
+# - Builds on linux using Vitis
+# - Programs KR260 using JTAG
+# - Runs bare-metal and captures output over UART
+#   apps/kr260_hw_bm
+
+
+# [FreeRTOS] Step 2
+# - Builds on linux using Vitis
+# - Programs KR260 using JTAG
+# - Runs FreeRTOS and captures output over UART
+#   apps/kr260_hw_rtos
+
+# [Ubuntu] Step 2
+# - Builds Kria App
+# - 
+
+
 
 info:
 	@echo "==> Copying $(SCRIPT) to $(KR260_USER)@$(KR260_HOST):$(REMOTE_DIR)/"

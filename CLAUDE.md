@@ -90,7 +90,7 @@ Full write-up with reproduction details: `bug.txt`. If anyone proposes going bac
 
 This design **specifically routes PS-PL control via `M_AXI_HPM0_LPD`** (not the default HPM0_FPD), and DMA data via `S_AXI_HPC0_FPD`. If control regresses to FPD, `axi_dma` reads `SR=0` forever after the test asserts `RS=1` — fabric contention between control writes and data transactions deadlocks at the FPD switch. `extend_design.tcl` actively disconnects both `M_AXI_HPMx_FPD` nets, disables `PSU__USE__M_AXI_GP0/GP1`, enables `PSU__USE__M_AXI_GP2` (the LPD master), and reduces the interconnect to a single SI on HPM0_LPD.
 
-If you regenerate the BD and DMA hangs, this is the first thing to re-check. `apps/kr260_hw_rtos/` (or `apps/kr260_hw_bm/` once its addresses are updated — see "Bare-metal alternative" below) is the diagnostic tool: if DMA passes there but hangs under Linux, the bitstream is fine and dfx-mgr's PS init is missing something (AFI / HP fabric-port enable).
+If you regenerate the BD and DMA hangs, this is the first thing to re-check. `apps/kr260_hw_rtos/` and `apps/kr260_hw_bm/` are the diagnostic tools (both now on the `0x8000_0000+` LPD map): if DMA passes there but hangs under Linux, the bitstream is fine and dfx-mgr's PS init is missing something (AFI / HP fabric-port enable).
 
 ## Building the XSA
 
@@ -167,8 +167,8 @@ xsct load.tcl                                  # connects JTAG, programs PL, run
 
 UART: 115200 8N1 on the FTDI at J7. Requires `vivado/kr260_hw.xsa` to exist.
 
-- **`kr260_hw_bm/`** — standalone BSP (`-os standalone`). **Note: its `main.c` still uses the pre-`extend_design.tcl` FPD addresses (`0xA000_0000+`) and will not work against the current XSA until updated to `0x8000_0000+`.** Also has an `importsources`-inside-create-guard footgun: edits to `main.c` silently don't rebuild on subsequent `xsct build.tcl` runs unless you nuke `vitis_ws/` first.
-- **`kr260_hw_rtos/`** — FreeRTOS BSP (`-os freertos10_xilinx`). Same three exercises wrapped in one `xTaskCreate`'d task, then `vTaskStartScheduler()`. **Address map is up to date (`0x8000_0000+`)** and `build.tcl` re-imports `main.c` on every run. This is the working JTAG diagnostic until `kr260_hw_bm` is brought current.
+- **`kr260_hw_bm/`** — standalone BSP (`-os standalone`). Address map is on the current LPD aperture (`0x8000_0000+`). Footgun: `build.tcl` only runs `importsources` inside the "app doesn't exist yet" guard, so edits to `main.c` silently don't rebuild on subsequent `xsct build.tcl` runs unless you `rm -rf vitis_ws/` first (or hoist the `importsources` call out of the guard the way `kr260_hw_rtos/build.tcl` does).
+- **`kr260_hw_rtos/`** — FreeRTOS BSP (`-os freertos10_xilinx`). Same three exercises wrapped in one `xTaskCreate`'d task, then `vTaskStartScheduler()`. Address map on the current LPD aperture (`0x8000_0000+`) and `build.tcl` re-imports `main.c` on every run.
 
 ### Boot-mode options and restoring Ubuntu
 
