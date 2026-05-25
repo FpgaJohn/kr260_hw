@@ -5,7 +5,7 @@ REMOTE_DIR := /home/$(KR260_USER)
 
 MAKEFLAGS += --no-print-directory
 
-.PHONY: info deploy deploy-run xsa xsa-clean
+.PHONY: info deploy deploy-run xsa xsa-clean bare-metal-build bare-metal-run
 
 # Step 1 - Build Vivado Project and Export XSA
 xsa:
@@ -19,6 +19,11 @@ xsa-clean:
 # - Programs KR260 using JTAG
 # - Runs bare-metal and captures output over UART
 #   apps/kr260_hw_bm
+bare-metal-build:
+	$(MAKE) -C apps/kr260_hw_bm build
+
+bare-metal-run:
+	$(MAKE) -C apps/kr260_hw_bm run
 
 
 # [FreeRTOS] Step 2
