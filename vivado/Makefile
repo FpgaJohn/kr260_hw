@@ -26,3 +26,4 @@ xsa:
 clean:
 	rm -rf $(PROJ_DIR) .Xil
 	rm -f build.log vivado*.jou vivado*.log
+	rm -f kr260_hw.xsa

@@ -35,6 +35,7 @@ bare-metal-clean:
 # - Runs FreeRTOS and captures output over UART
 #   apps/kr260_hw_rtos
 
+
 # [Ubuntu] Step 2
 # - Builds Kria App
 # - 

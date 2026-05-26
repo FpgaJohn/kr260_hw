@@ -84,9 +84,10 @@ module simple_fifo #(
                  (wp[DEPTH_BITS] != rp[DEPTH_BITS]);
     wire [DEPTH_BITS:0] count = wp - rp;
 
-    reg [ADDR_W-1:0] aw_latched;
-    reg [ADDR_W-1:0] ar_latched;
-    reg              aw_taken, w_taken, ar_taken;
+    reg [ADDR_W-1:0]  aw_latched;
+    reg [ADDR_W-1:0]  ar_latched;
+    reg [DATA_W-1:0]  w_data_latched;
+    reg               aw_taken, w_taken, ar_taken;
 
     always @(posedge s_axi_aclk) begin
         if (!s_axi_aresetn) begin
@@ -118,8 +119,9 @@ module simple_fifo #(
 
             // -------- W handshake --------
             if (s_axi_wvalid && s_axi_wready) begin
-                w_taken       <= 1'b1;
-                s_axi_wready  <= 1'b0;
+                w_data_latched <= s_axi_wdata;
+                w_taken        <= 1'b1;
+                s_axi_wready   <= 1'b0;
             end else if (!w_taken && !s_axi_wready) begin
                 s_axi_wready <= 1'b1;
             end
@@ -129,7 +131,7 @@ module simple_fifo #(
                 case (aw_latched[3:2])
                     2'b00: begin              // 0x00 W: push
                         if (!full) begin
-                            mem[wp[DEPTH_BITS-1:0]] <= s_axi_wdata;
+                            mem[wp[DEPTH_BITS-1:0]] <= w_data_latched;
                             wp <= wp + 1;
                         end
                     end

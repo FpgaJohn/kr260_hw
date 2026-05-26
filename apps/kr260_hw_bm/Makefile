@@ -34,7 +34,16 @@ ELF             := $(WS)/kr260_hw_bm/Debug/kr260_hw_bm.elf
 
 VITIS_SETTINGS  ?= /tools/Xilinx/Vitis/2024.1/settings64.sh
 
-UART_DEV        ?= /dev/ttyUSB1
+# Auto-detect KR260 PS-UART: find the ttyUSB whose parent USB device has
+# manufacturer "Xilinx" and is on interface 01 (channel B = PS UART).
+# Falls back to /dev/ttyUSB1 if detection fails (single board case).
+UART_DEV ?= $(or $(shell for dev in /sys/class/tty/ttyUSB*; do \
+    mfg=$$(cat "$$dev/device/../../manufacturer" 2>/dev/null); \
+    intf=$$(cat "$$(readlink -f $$dev/device/..)/bInterfaceNumber" 2>/dev/null); \
+    if [ "$$mfg" = "Xilinx" ] && [ "$$intf" = "01" ]; then \
+        echo "/dev/$$(basename $$dev)"; break; \
+    fi; \
+done),/dev/ttyUSB1)
 LOG_FILE        ?= bm.log
 TIMEOUT_S       ?= 10
 
@@ -77,6 +86,17 @@ run: $(ELF)
 	    echo "error: Vitis Classic not found at $(VITIS_SETTINGS)" >&2; \
 	    exit 1; \
 	fi
+	@# Ensure KR260 JTAG interface (channel A) isn't claimed by ftdi_sio
+	@for dev in /sys/bus/usb/devices/*; do \
+	    if [ -f "$$dev/manufacturer" ] && [ "$$(cat $$dev/manufacturer 2>/dev/null)" = "Xilinx" ] && \
+	       [ "$$(cat $$dev/idProduct 2>/dev/null)" = "6011" ]; then \
+	        intf="$$(basename $$dev):1.0"; \
+	        if [ -e "/sys/bus/usb/drivers/ftdi_sio/$$intf" ]; then \
+	            echo "==> Unbinding $$intf from ftdi_sio (JTAG channel)"; \
+	            echo "$$intf" | sudo tee /sys/bus/usb/drivers/ftdi_sio/unbind > /dev/null; \
+	        fi; \
+	    fi; \
+	done
 	@echo "==> Configuring $(UART_DEV) (115200 8N1)"
 	@stty -F $(UART_DEV) 115200 cs8 -cstopb -parenb -ixon raw -echo
 	@rm -f $(LOG_FILE)
