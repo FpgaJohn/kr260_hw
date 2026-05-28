@@ -7,7 +7,37 @@ REMOTE_DIR := /home/$(KR260_USER)
 
 MAKEFLAGS += --no-print-directory
 
-.PHONY: info deploy deploy-run xsa xsa-clean bare-metal-build bare-metal-run bare-metal-clean rtos-build rtos-run rtos-clean jtag-reboot tty
+.DEFAULT_GOAL := help
+
+.PHONY: help info deploy deploy-run xsa xsa-clean bare-metal-build bare-metal-run bare-metal-clean rtos-build rtos-run rtos-clean jtag-reboot tty
+
+help:
+	@echo "kr260_hw — available make targets:"
+	@echo ""
+	@echo "  Hardware (Vivado):"
+	@echo "    xsa                Build Vivado project and export kr260_hw.xsa (~25-35 min)"
+	@echo "    xsa-clean          Remove Vivado project and XSA"
+	@echo ""
+	@echo "  Bare-metal (Vitis Classic, JTAG):"
+	@echo "    bare-metal-build   Build the bare-metal ELF (auto-builds XSA if missing)"
+	@echo "    bare-metal-run     Program PL + run ELF on A53 #0 via JTAG, capture UART"
+	@echo "    bare-metal-clean   Remove vitis_ws/ and bm.log"
+	@echo ""
+	@echo "  FreeRTOS (Vitis Classic, JTAG):"
+	@echo "    rtos-build         Build the FreeRTOS ELF (auto-builds XSA if missing)"
+	@echo "    rtos-run           Program PL + run ELF on A53 #0 via JTAG, capture UART"
+	@echo "    rtos-clean         Remove vitis_ws/ and rtos.log"
+	@echo ""
+	@echo "  JTAG / UART utilities:"
+	@echo "    jtag-reboot        Reboot KR260 via JTAG (returns to DIP-switch boot, e.g. SD)"
+	@echo "    tty                Open screen on the KR260 PS-UART (115200 8N1)"
+	@echo ""
+	@echo "  Linux runtime (over ssh to ubuntu@$(KR260_HOST)):"
+	@echo "    info               Run list_uio.sh on the board (temps + UIO table)"
+	@echo "    deploy             scp scripts/ to the board"
+	@echo "    deploy-run         Install kr260_hw firmware, xmutil loadapp, run kr260_hw_test"
+	@echo ""
+	@echo "  help                 Show this message (default target)"
 
 # Step 1 - Build Vivado Project and Export XSA
 xsa:
