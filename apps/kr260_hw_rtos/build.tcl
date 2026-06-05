@@ -55,11 +55,13 @@ if {[catch {app list} existing] || [lsearch $existing $app] < 0} {
                -template "Empty Application(C)" -lang C
 }
 
-# Always re-import main.c so edits to apps/kr260_hw_rtos/main.c flow through.
-# (kr260_hw_bm/build.tcl has this inside the create-only guard, which is a
-# footgun — edits on disk silently don't rebuild.)
-puts "build.tcl: importing main.c"
-importsources -name $app -path $this_dir/main.c
+# Always re-import sources so edits flow through on subsequent xsct runs.
+# main.c uses XGpio + XAxiDma via memory.h, which declares the shared DMA
+# buffers defined in memory.c.
+foreach src {main.c memory.c memory.h} {
+    puts "build.tcl: importing $src"
+    importsources -name $app -path $this_dir/$src
+}
 
 puts "build.tcl: building $app"
 app build -name $app

@@ -25,7 +25,6 @@ vivado/Makefile             # invokes Vivado in batch mode
 vivado/ip/my_state.v        # 64-bit accumulator (module-ref'd into the BD)
 vivado/ip/simple_fifo.v     # custom Verilog AXI4-Lite FIFO (256×32, push@+0 W / pop@+0 R)
 vivado/constraints/cons.xdc # fan-EN pin (A12)
-vivado/kr260_hw.xsa         # exported hardware handoff (consumed by kria_app/)
 vivado/kr260_starter_kit.tcl # reference design (Xilinx) — not built; used for comparison
 
 kria_app/                   # packages vivado/kr260_hw.xsa as a Kria runtime app
@@ -37,12 +36,12 @@ apps/kr260_hw_rtos/         # FreeRTOS JTAG test (Vitis xsct, freertos10_xilinx 
 
 vitis/boot_jtag.tcl         # xsct helper to flip the board into JTAG boot mode
 scripts/                    # helper shell scripts that run on the KR260
-Makefile                    # top-level: ships scripts/ to the board over ssh
+Makefile                    # top-level driver: XSA, JTAG apps, UART, board interaction
 README.md                   # step-by-step rebuild & deploy walkthrough (UI + CLI flows)
 bug.txt                     # write-up of the AXI GPIO v2.0 dual-channel synth bug
 ```
 
-There are no checked-in HDL sources for the BD itself and no `vivado/kr260_hw/` project directory in git — `kr260_hw.tcl` + `extend_design.tcl` regenerate everything.
+There are no checked-in build artifacts: no HDL sources for the BD itself, no `vivado/kr260_hw/` project directory, and **no `vivado/kr260_hw.xsa`** — `kr260_hw.tcl` + `extend_design.tcl` regenerate everything, and consumers (`kria_app/`, the JTAG apps) auto-build or require the XSA from `vivado/Makefile`.
 
 ## Two-stage Tcl: `kr260_hw.tcl` + `extend_design.tcl`
 
@@ -150,25 +149,30 @@ make deploy                                    # → ubuntu@kr260u:/tmp/
 make run                                       # deploy + ssh + sudo run
 ```
 
-The prebuilt `apps/kr260_hw_test/kr260_hw_test` is checked in and matches the in-tree `main.c`. Rebuild only when `main.c` changes. The binary needs `sudo` on the board (UIO mmap + hugepages).
+The binary is not checked in — build it before `make deploy`. It needs `sudo` on the board (UIO mmap + hugepages).
 
 To use a different toolchain (e.g. the PetaLinux SDK's `aarch64-xilinx-linux-gcc`), override `CC=…` on the make command line.
 
 ## JTAG alternatives (`apps/kr260_hw_bm/`, `apps/kr260_hw_rtos/`)
 
-Two Vitis Classic apps that run the same three exercises directly on Cortex-A53 #0 via JTAG, bypassing Linux and `dfx-mgr` entirely. Used as a "is the bitstream good?" diagnostic when the userspace test hangs. Both follow the same xsct flow:
+Two Vitis Classic apps that run the same three exercises directly on Cortex-A53 #0 via JTAG, bypassing Linux and `dfx-mgr` entirely. Used as a "is the bitstream good?" diagnostic when the userspace test hangs. Both have identical Makefiles:
 
 ```bash
-source /tools/Xilinx/Vitis/2024.1/settings64.sh
 cd apps/kr260_hw_{bm,rtos}
-xsct build.tcl                                 # builds ELF + FSBL + platform
-xsct load.tcl                                  # connects JTAG, programs PL, runs ELF
+make build      # ELF + FSBL + platform via 'xsct build.tcl'; auto-builds the XSA if missing
+make run        # 'xsct load.tcl': programs PL, runs ELF; captures UART to {bm,rtos}.log and prints it
+make clean      # rm -rf vitis_ws/ + log
 ```
 
-UART: 115200 8N1 on the FTDI at J7. Requires `vivado/kr260_hw.xsa` to exist.
+`make run` auto-detects the PS-UART (the ttyUSB on the Xilinx FT4232H, interface 01; falls back to `/dev/ttyUSB1` — override `UART_DEV=…`), unbinds `ftdi_sio` from the JTAG channel (interface 00) if it has claimed it, and captures output for `TIMEOUT_S` (default 10) seconds. Raw `xsct build.tcl` / `xsct load.tcl` after sourcing `settings64.sh` still works. UART: 115200 8N1 on the FTDI at J7. Note: only Vitis **Classic** ships `xsct`; the Unified IDE does not.
 
-- **`kr260_hw_bm/`** — standalone BSP (`-os standalone`). Address map is on the current LPD aperture (`0x8000_0000+`). Footgun: `build.tcl` only runs `importsources` inside the "app doesn't exist yet" guard, so edits to `main.c` silently don't rebuild on subsequent `xsct build.tcl` runs unless you `rm -rf vitis_ws/` first (or hoist the `importsources` call out of the guard the way `kr260_hw_rtos/build.tcl` does).
-- **`kr260_hw_rtos/`** — FreeRTOS BSP (`-os freertos10_xilinx`). Same three exercises wrapped in one `xTaskCreate`'d task, then `vTaskStartScheduler()`. Address map on the current LPD aperture (`0x8000_0000+`) and `build.tcl` re-imports `main.c` on every run.
+Both apps share the same structure — two parallel implementations of the three tests:
+- **`main.c`** — BSP-driver path: `XGpio` for the accumulator GPIOs, `XAxiDma` (simple mode) for the loopback DMA. The custom `simple_fifo` has no matching Xilinx driver (`XLlFifo` targets `axi_fifo_mm_s`, different register layout), so the FIFO test stays direct-MMIO even here.
+- **`memory.c`** — the original direct-MMIO path (`mem_test_*`), hardcoded LPD addresses via `Xil_In32`/`Xil_Out32`. Kept as reference/sanity check; swap `test_*` → `mem_test_*` in `main()` to use it. DMA buffers (`tx_buf`/`rx_buf`, 64-byte aligned) live here and are shared with `main.c` via `memory.h`.
+
+Both `build.tcl` scripts re-import `main.c`, `memory.c`, and `memory.h` on every run, so source edits flow through incremental `xsct build.tcl` rebuilds (the bm Makefile also `rm -rf`s `vitis_ws/` before each build).
+
+Differences: **`kr260_hw_bm/`** is standalone BSP (`-os standalone`); **`kr260_hw_rtos/`** is FreeRTOS BSP (`-os freertos10_xilinx`), same three exercises wrapped in one `xTaskCreate`'d task, then `vTaskStartScheduler()`. Both are on the current LPD aperture (`0x8000_0000+`).
 
 ### Boot-mode options and restoring Ubuntu
 
@@ -178,14 +182,22 @@ With Ubuntu installed on SD, three ways to enter JTAG mode:
 2. **DIP-switch JTAG boot** — power off, flip boot-mode DIPs to all-off, power on. Board sits idle waiting for JTAG. Cleanest state; required for `psu_init` to run against a virgin PS.
 3. **Software boot-mode override** — `xsct` then `source vitis/boot_jtag.tcl; boot_jtag` writes the boot-mode register so the next `rst -system` comes up in JTAG mode without touching DIPs.
 
-To restore Ubuntu: **power-cycle the board**. The boot-mode register reloads from the DIPs at every cold reset; SD card is untouched. After Ubuntu boots back up, run `sudo xmutil unloadapp 2>/dev/null; sudo xmutil loadapp kr260_hw` to resync `dfx-mgr` with the PL state.
+To restore Ubuntu: **`make jtag-reboot`** (top level) issues `rst -system` over JTAG, or **power-cycle the board**. The boot-mode register reloads from the DIPs at reset; SD card is untouched. After Ubuntu boots back up, run `sudo xmutil unloadapp 2>/dev/null; sudo xmutil loadapp kr260_hw` to resync `dfx-mgr` with the PL state.
 
 ## Top-level `Makefile` and `scripts/`
 
-The repo-root `Makefile` is for **interacting with the running board**, not building. It assumes ssh to `ubuntu@kr260u` is set up. Set up passwordless sudo on the board first (one-liner in `README.md` "One-time host setup").
+The repo-root `Makefile` is the umbrella driver — `make` (default `help`) lists everything. Build targets delegate to the subdirectory Makefiles; board targets assume ssh to `ubuntu@kr260u` with passwordless sudo (one-liner in `README.md` "One-time host setup").
 
-- `make` (default `info`) — scps `list_uio.sh` to `~/` on the board and runs it. Prints SoC temps and the `/sys/class/uio/uio*` table.
+- `make xsa` / `make xsa-clean` — delegate to `vivado/Makefile`.
+- `make bare-metal-{build,run,clean}`, `make rtos-{build,run,clean}` — delegate to the JTAG apps.
+- `make jtag-reboot` — `rst -system` via xsct; board boots from DIP switches (back to SD/Ubuntu). Unbinds `ftdi_sio` from the JTAG channel first.
+- `make tty` — open the PS-UART (115200 8N1) with `tio` by default (tmux-friendly; Ctrl-t q quits). Override `TTY_TOOL=screen|picocom|minicom`.
+- `make tty-list` — show stray screen sessions / processes holding any `/dev/ttyUSB*`.
+- `make tty-kill` — kill whatever holds the KR260 PS-UART (clean `screen -X quit` for screen sessions).
+- `make list-all` — enumerate USB serial ports per cable + JTAG scan chains via xsct (a cable claimed by `ftdi_sio` shows in the USB list but not the JTAG list).
+- `make info` — scps `list_uio.sh` to the board and runs it (SoC temps + `/sys/class/uio/uio*` table).
 - `make deploy` — scps all of `scripts/` to `~/` on the board.
+- `make deploy-run` — installs the scp'd `~/kr260_hw` firmware, `xmutil loadapp`, sets hugepages, runs `kr260_hw_test`. Assumes `kria_app && make deploy` and `apps/kr260_hw_test && make deploy` already ran.
 
 `scripts/` contents:
 - `list_uio.sh` — temps + UIO listing.

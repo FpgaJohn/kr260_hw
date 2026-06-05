@@ -9,7 +9,7 @@ MAKEFLAGS += --no-print-directory
 
 .DEFAULT_GOAL := help
 
-.PHONY: help info deploy deploy-run xsa xsa-clean bare-metal-build bare-metal-run bare-metal-clean rtos-build rtos-run rtos-clean jtag-reboot tty
+.PHONY: help info deploy deploy-run xsa xsa-clean bare-metal-build bare-metal-run bare-metal-clean rtos-build rtos-run rtos-clean jtag-reboot tty tty-list tty-kill list-all
 
 help:
 	@echo "kr260_hw — available make targets:"
@@ -30,7 +30,10 @@ help:
 	@echo ""
 	@echo "  JTAG / UART utilities:"
 	@echo "    jtag-reboot        Reboot KR260 via JTAG (returns to DIP-switch boot, e.g. SD)"
-	@echo "    tty                Open screen on the KR260 PS-UART (115200 8N1)"
+	@echo "    tty                Open the KR260 PS-UART (115200 8N1; default: tio, Ctrl-t q to quit)"
+	@echo "    tty-list           List screen sessions and processes holding any /dev/ttyUSB*"
+	@echo "    tty-kill           Kill any screen/process holding the KR260 PS-UART"
+	@echo "    list-all           List all FPGA devices and which USB/tty port they are on"
 	@echo ""
 	@echo "  Linux runtime (over ssh to ubuntu@$(KR260_HOST)):"
 	@echo "    info               Run list_uio.sh on the board (temps + UIO table)"
@@ -115,10 +118,96 @@ KR260_UART ?= $(or $(shell for dev in /sys/class/tty/ttyUSB*; do \
     fi; \
 done),/dev/ttyUSB1)
 
-# Open KR260 PS-UART in screen. Ctrl-a k to quit.
+# Open KR260 PS-UART in tio (tmux-friendly; Ctrl-t q to quit).
+# Override TTY_TOOL=screen / picocom / minicom if preferred.
+TTY_TOOL ?= tio
 tty:
-	@echo "==> KR260 UART: $(KR260_UART) (115200 8N1)"
-	screen $(KR260_UART) 115200
+	@echo "==> KR260 UART: $(KR260_UART) (115200 8N1) via $(TTY_TOOL)"
+	@case "$(TTY_TOOL)" in \
+	    tio)     tio -b 115200 -d 8 -p none -s 1 -f none $(KR260_UART) ;; \
+	    screen)  screen $(KR260_UART) 115200 ;; \
+	    picocom) picocom -b 115200 $(KR260_UART) ;; \
+	    minicom) minicom -D $(KR260_UART) -b 115200 ;; \
+	    *)       echo "unknown TTY_TOOL=$(TTY_TOOL)" >&2; exit 1 ;; \
+	esac
+
+# List who is holding the serial ports (stray screen sessions, tio, etc.).
+tty-list:
+	@echo "==> screen sessions:"
+	@out=$$(screen -ls 2>/dev/null | awk '/[0-9]+\./ {print "  " $$0}'); \
+	if [ -n "$$out" ]; then echo "$$out"; else echo "  (none)"; fi
+	@echo "==> /dev/ttyUSB* holders:"
+	@found=0; \
+	for dev in /dev/ttyUSB*; do \
+	    [ -e "$$dev" ] || continue; \
+	    pids=$$(fuser "$$dev" 2>/dev/null); \
+	    if [ -n "$$pids" ]; then \
+	        for p in $$pids; do \
+	            cmd=$$(ps -p $$p -o comm= 2>/dev/null); \
+	            args=$$(ps -p $$p -o args= 2>/dev/null); \
+	            printf "  %-15s pid=%-7s %s   (%s)\n" "$$dev" "$$p" "$$cmd" "$$args"; \
+	        done; \
+	        found=1; \
+	    fi; \
+	done; \
+	if [ $$found -eq 0 ]; then echo "  (none)"; fi
+	@echo "==> KR260 PS-UART (auto-detected): $(KR260_UART)"
+
+# Kill whatever is holding the KR260 PS-UART (stray screen session, tio, …).
+# Prefers a clean 'screen -X quit' when the holder is a screen session.
+tty-kill:
+	@pids=$$(fuser $(KR260_UART) 2>/dev/null); \
+	if [ -z "$$pids" ]; then \
+	    echo "==> Nothing holding $(KR260_UART)"; \
+	    exit 0; \
+	fi; \
+	for p in $$pids; do \
+	    sname=$$(screen -ls 2>/dev/null | awk -v p=$$p '$$1 ~ ("^"p"\\.") {print $$1; exit}'); \
+	    if [ -n "$$sname" ]; then \
+	        echo "==> screen -X -S $$sname quit"; \
+	        screen -X -S "$$sname" quit; \
+	    else \
+	        echo "==> kill $$p"; \
+	        kill "$$p" 2>/dev/null || true; \
+	    fi; \
+	done
+
+# List all FPGA dev boards: USB serial ports per cable, then the JTAG scan
+# chain per cable as seen by xsct (a cable whose JTAG channel is blocked by
+# ftdi_sio may appear in the USB list but not the JTAG list).
+list-all:
+	@echo "==> USB serial ports:"
+	@found=0; \
+	for dev in /sys/class/tty/ttyUSB*; do \
+	    [ -e "$$dev" ] || continue; \
+	    mfg=$$(cat "$$dev/device/../../manufacturer" 2>/dev/null); \
+	    prod=$$(cat "$$dev/device/../../product" 2>/dev/null); \
+	    ser=$$(cat "$$dev/device/../../serial" 2>/dev/null); \
+	    intf=$$(cat "$$(readlink -f $$dev/device/..)/bInterfaceNumber" 2>/dev/null); \
+	    usbpath=$$(basename "$$(readlink -f $$dev/device/../..)"); \
+	    printf "  /dev/%-9s usb=%-10s if=%s  %s %s  serial=%s\n" \
+	        "$$(basename $$dev)" "$$usbpath" "$$intf" "$$mfg" "$$prod" "$$ser"; \
+	    found=1; \
+	done; \
+	if [ $$found -eq 0 ]; then echo "  (none)"; fi
+	@if [ ! -f "$(VITIS_SETTINGS)" ]; then \
+	    echo "==> JTAG: skipped (Vitis Classic not found at $(VITIS_SETTINGS))"; \
+	    exit 0; \
+	fi; \
+	echo "==> JTAG scan chains (xsct):"; \
+	source $(VITIS_SETTINGS) && xsct -eval ' \
+	    connect; \
+	    foreach t [jtag targets -target-properties] { \
+	        set level [dict get $$t level]; \
+	        set name  [dict get $$t name]; \
+	        if {$$level == 0} { \
+	            puts "  cable: $$name" \
+	        } else { \
+	            puts "    device: $$name" \
+	        } \
+	    }; \
+	    disconnect' 2>/dev/null | grep -E "cable:|device:" \
+	    || echo "  (no JTAG cables found)"
 
 # [Ubuntu] Step 2
 # - Builds Kria App

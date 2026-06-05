@@ -49,10 +49,16 @@ if {[catch {app list} existing] || [lsearch $existing $app] < 0} {
     puts "build.tcl: creating app $app"
     app create -name $app -platform $platform -domain $domain \
                -template "Empty Application(C)" -lang C
-    # Import main.c into the app's src/
-    importsources -name $app -path $this_dir/main.c
 } else {
     puts "build.tcl: app $app already exists, skipping create"
+}
+
+# Always re-import sources so edits flow through on subsequent xsct runs
+# (matches kr260_hw_rtos/build.tcl). main.c uses XGpio + XAxiDma via
+# memory.h, which declares the shared DMA buffers defined in memory.c.
+foreach src {main.c memory.c memory.h} {
+    puts "build.tcl: importing $src"
+    importsources -name $app -path $this_dir/$src
 }
 
 puts "build.tcl: building $app"
