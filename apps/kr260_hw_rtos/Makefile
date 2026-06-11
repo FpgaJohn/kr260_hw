@@ -56,7 +56,7 @@ $(XSA):
 	@echo "==> XSA not found at $@ — building via vivado/Makefile (25-35 min)"
 	$(MAKE) -C ../../vivado xsa
 
-$(ELF): $(XSA) main.c build.tcl
+$(ELF): $(XSA) main.c memory.c memory.h build.tcl
 	@if [ ! -f "$(VITIS_SETTINGS)" ]; then \
 	    echo "error: Vitis Classic not found at $(VITIS_SETTINGS)" >&2; \
 	    echo "  install Vitis Classic 2024.1 or override VITIS_SETTINGS=..." >&2; \

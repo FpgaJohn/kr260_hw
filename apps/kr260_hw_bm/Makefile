@@ -57,11 +57,10 @@ $(XSA):
 	@echo "==> XSA not found at $@ — building via vivado/Makefile (25-35 min)"
 	$(MAKE) -C ../../vivado xsa
 
-# build.tcl's importsources call sits inside an 'if app does not exist' guard,
-# so edits to main.c are silently ignored on incremental rebuilds. rm -rf the
-# workspace before each rebuild so the dependency on main.c actually works.
+# rm -rf the workspace before each rebuild so xsct always starts from a clean
+# platform/app and the source dependencies below actually take effect.
 # (No-op on the cleanly-cloned-repo path since vitis_ws does not exist yet.)
-$(ELF): $(XSA) main.c build.tcl
+$(ELF): $(XSA) main.c memory.c memory.h build.tcl
 	@if [ ! -f "$(VITIS_SETTINGS)" ]; then \
 	    echo "error: Vitis Classic not found at $(VITIS_SETTINGS)" >&2; \
 	    echo "  install Vitis Classic 2024.1 or override VITIS_SETTINGS=..." >&2; \

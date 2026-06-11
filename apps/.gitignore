@@ -1,0 +1,11 @@
+# Vitis xsct build artifacts (kr260_hw_bm/, kr260_hw_rtos/) — all regenerated
+# by `make build` / `make run`.
+
+# Vitis workspace: platform + FSBL + app, rebuilt from build.tcl + the XSA
+vitis_ws/
+
+# Vitis/xsct runtime junk
+.Xil/
+
+# UART capture from `make run` (bm.log / rtos.log)
+*.log
